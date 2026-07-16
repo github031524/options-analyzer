@@ -123,6 +123,9 @@ function fmtShort(n) {
 // ---------- chart ----------
 
 function StepChart({ curve, ticker }) {
+  const svgRef = useRef(null);
+  const [hover, setHover] = useState(null);
+
   if (!curve) return null;
   const { segments, domainMin, domainMax, strikes } = curve;
   const W = 1500, H = 230;
@@ -134,8 +137,10 @@ function StepChart({ curve, ticker }) {
   const niceMax = Math.ceil(maxAbs / 5000) * 5000 || 5000;
 
   const xScale = (p) => mL + ((p - domainMin) / (domainMax - domainMin)) * plotW;
+  const priceAt = (x) => domainMin + ((x - mL) / plotW) * (domainMax - domainMin);
   const yScale = (v) => mT + ((niceMax - v) / (niceMax * 2)) * plotH;
   const zeroY = yScale(0);
+  const segmentAt = (price) => segments.find((s) => price >= s.x0 && price <= s.x1) || segments[segments.length - 1];
 
   let line = "";
   segments.forEach((s, i) => {
@@ -150,12 +155,50 @@ function StepChart({ curve, ticker }) {
   });
   area += `L${xScale(segments[segments.length - 1].x1)},${zeroY} Z`;
 
+  const handleMove = (e) => {
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!svg || !ctm) return;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const loc = pt.matrixTransform(ctm.inverse());
+    const x = Math.min(Math.max(loc.x, mL), W - mR);
+    const price = priceAt(x);
+    setHover({ x, price, netPosition: segmentAt(price).y });
+  };
+  const handleLeave = () => setHover(null);
+
+  let tip = null;
+  if (hover) {
+    const tipW = 122, tipH = 40;
+    const tipX = hover.x + 10 + tipW > W - mR ? hover.x - 10 - tipW : hover.x + 10;
+    const tipY = mT + 4;
+    tip = (
+      <g pointerEvents="none">
+        <line x1={hover.x} y1={mT} x2={hover.x} y2={H - mB} stroke={ACCENT} strokeWidth="1" strokeDasharray="3 3" />
+        <circle cx={hover.x} cy={yScale(hover.netPosition)} r="3.5" fill={ACCENT} stroke="#fff" strokeWidth="1.5" />
+        <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="3" fill="#fff" stroke={HAIRLINE} strokeWidth="1" />
+        <text x={tipX + 8} y={tipY + 16} fontSize="10.5" fontWeight="600" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
+          {hover.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        </text>
+        <text x={tipX + 8} y={tipY + 30} fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
+          {fmtMoney(hover.netPosition)}
+        </text>
+      </g>
+    );
+  }
+
   return (
     <svg
+      ref={svgRef}
       viewBox={`0 0 ${W} ${H}`}
       width="100%"
       role="img"
       aria-label={`Step chart of net underlying position for ${ticker} across strike prices, ranging from ${fmtShort(-niceMax)} to ${fmtShort(niceMax)} shares`}
+      onMouseMove={handleMove}
+      onMouseLeave={handleLeave}
+      style={{ cursor: "crosshair" }}
     >
       {strikes.map((k) => (
         <line key={k} x1={xScale(k)} y1={mT} x2={xScale(k)} y2={H - mB} stroke={HAIRLINE} strokeWidth="1" />
@@ -169,6 +212,7 @@ function StepChart({ curve, ticker }) {
       {strikes.map((k) => (
         <text key={k} x={xScale(k)} y={H - mB + 18} textAnchor="middle" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{k}</text>
       ))}
+      {tip}
     </svg>
   );
 }
