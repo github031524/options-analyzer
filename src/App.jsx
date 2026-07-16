@@ -93,8 +93,8 @@ function fmtShort(n) {
 function StepChart({ curve, ticker }) {
   if (!curve) return null;
   const { segments, domainMin, domainMax, strikes } = curve;
-  const W = 720, H = 300;
-  const mL = 70, mR = 20, mT = 24, mB = 40;
+  const W = 1500, H = 230;
+  const mL = 60, mR = 20, mT = 16, mB = 32;
   const plotW = W - mL - mR;
   const plotH = H - mT - mB;
 
