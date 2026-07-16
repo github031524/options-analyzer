@@ -43,6 +43,14 @@ function parseLeg(description) {
   };
 }
 
+// Last-trade prints go stale fast on thin option strikes; prefer the live
+// bid/ask mid when both are available and fall back to last otherwise.
+function midOrLast(r) {
+  const bid = r.bid != null ? Number(r.bid) : NaN;
+  const ask = r.ask != null ? Number(r.ask) : NaN;
+  return Number.isFinite(bid) && Number.isFinite(ask) ? (bid + ask) / 2 : Number(r.last);
+}
+
 // Dollar value of a 1-point move, per futures contract. Options on these
 // futures settle 1-for-1 into the future itself (unlike equity options,
 // which are 100 shares/contract) -- see contractSpec.
@@ -265,7 +273,7 @@ export default function OptionsPositionAnalyzer() {
       const leg = parseLeg(r.description);
       if (!leg || stockPrice == null) return null;
       const position = Number(r.position);
-      const last = Number(r.last);
+      const last = midOrLast(r);
       const intrinsic = leg.type === "PUT" ? Math.max(leg.strike - stockPrice, 0) : Math.max(stockPrice - leg.strike, 0);
       const extrinsic = last - intrinsic;
       const totalExtrinsic = extrinsic * Math.abs(position) * dollarMultiplier;
