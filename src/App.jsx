@@ -43,23 +43,47 @@ function parseLeg(description) {
   };
 }
 
-function netPositionAt(legs, baselineShift, price) {
+// Dollar value of a 1-point move, per futures contract. Options on these
+// futures settle 1-for-1 into the future itself (unlike equity options,
+// which are 100 shares/contract) -- see contractSpec.
+const FUTURES_MULTIPLIERS = {
+  ES: 50, MES: 5, NQ: 20, MNQ: 2, RTY: 50, M2K: 5, YM: 5, MYM: 0.5,
+  NKD: 5, NIY: 500, VXM: 100, BTC: 5, MBT: 0.1, ETH: 50, MET: 0.5,
+  CL: 1000, MCL: 100, NG: 10000, MNG: 1000, RB: 42000, HO: 42000,
+  BZ: 1000, QM: 500, QG: 2500, LCO: 1000, GC: 100, MGC: 10, SI: 5000,
+  SIL: 1000, HG: 25000, PL: 50, PA: 100, QC: 12500, QI: 2500, QO: 50,
+  ZC: 50, ZW: 50, ZS: 50, ZM: 100, ZL: 600, ZO: 50, ZR: 2000, KC: 375,
+  CC: 10, CT: 500, SB: 1120, OJ: 150, GF: 500, LE: 400, HE: 400, LBS: 110,
+  "6E": 125000, M6E: 12500, "6B": 62500, M6B: 6250, "6J": 1250000,
+  "6A": 100000, M6A: 10000, "6C": 100000, "6S": 125000, "6M": 500000,
+  "6N": 100000, DX: 1000, ZT: 2000, ZF: 1000, ZN: 1000, ZB: 1000,
+  UB: 1000, TN: 1000, GE: 2500, SR3: 2500, ZQ: 4167,
+};
+
+function contractSpec(ticker) {
+  const dollarMultiplier = FUTURES_MULTIPLIERS[ticker];
+  return dollarMultiplier != null
+    ? { dollarMultiplier, sharesPerContract: 1 }
+    : { dollarMultiplier: 100, sharesPerContract: 100 };
+}
+
+function netPositionAt(legs, baselineShift, price, sharesPerContract) {
   let v = baselineShift || 0;
   for (const leg of legs) {
     const short = leg.position < 0;
     const qty = Math.abs(leg.position);
     if (leg.type === "PUT") {
-      if (short) { if (price < leg.strike) v += 100 * qty; }
-      else { if (price < leg.strike) v -= 100 * qty; }
+      if (short) { if (price < leg.strike) v += sharesPerContract * qty; }
+      else { if (price < leg.strike) v -= sharesPerContract * qty; }
     } else {
-      if (short) { if (price > leg.strike) v -= 100 * qty; }
-      else { if (price > leg.strike) v += 100 * qty; }
+      if (short) { if (price > leg.strike) v -= sharesPerContract * qty; }
+      else { if (price > leg.strike) v += sharesPerContract * qty; }
     }
   }
   return v;
 }
 
-function buildCurve(legs, baselineShift) {
+function buildCurve(legs, baselineShift, sharesPerContract) {
   if (legs.length === 0) return null;
   const strikes = [...new Set(legs.map((l) => l.strike))].sort((a, b) => a - b);
   const minK = strikes[0];
@@ -72,7 +96,7 @@ function buildCurve(legs, baselineShift) {
   const segments = [];
   for (let i = 0; i < xs.length - 1; i++) {
     const mid = (xs[i] + xs[i + 1]) / 2;
-    segments.push({ x0: xs[i], x1: xs[i + 1], y: netPositionAt(legs, baselineShift, mid) });
+    segments.push({ x0: xs[i], x1: xs[i + 1], y: netPositionAt(legs, baselineShift, mid, sharesPerContract) });
   }
   return { segments, domainMin, domainMax, strikes };
 }
@@ -230,6 +254,12 @@ export default function OptionsPositionAnalyzer() {
       ? Number(underlyingRow.position)
       : 0;
 
+  const ticker = underlyingRow
+    ? underlyingRow.description.trim().split(/\s+/)[0]
+    : rawRows.find((r) => parseLeg(r.description))?.description.trim().split(/\s+/)[0] || "—";
+
+  const { dollarMultiplier, sharesPerContract } = contractSpec(ticker);
+
   const legRows = rawRows
     .map((r) => {
       const leg = parseLeg(r.description);
@@ -238,22 +268,18 @@ export default function OptionsPositionAnalyzer() {
       const last = Number(r.last);
       const intrinsic = leg.type === "PUT" ? Math.max(leg.strike - stockPrice, 0) : Math.max(stockPrice - leg.strike, 0);
       const extrinsic = last - intrinsic;
-      const totalExtrinsic = extrinsic * Math.abs(position) * 100;
+      const totalExtrinsic = extrinsic * Math.abs(position) * dollarMultiplier;
       return { ...leg, position, last, intrinsic, extrinsic, totalExtrinsic };
     })
     .filter(Boolean)
     .sort((a, b) => a.strike - b.strike || a.type.localeCompare(b.type));
 
-  const curve = stockPrice != null && legRows.length > 0 ? buildCurve(legRows, baselineShift) : null;
-  const netAtSpot = stockPrice != null ? netPositionAt(legRows, baselineShift, stockPrice) : null;
+  const curve = stockPrice != null && legRows.length > 0 ? buildCurve(legRows, baselineShift, sharesPerContract) : null;
+  const netAtSpot = stockPrice != null ? netPositionAt(legRows, baselineShift, stockPrice, sharesPerContract) : null;
 
   const putsTotal = legRows.filter((r) => r.type === "PUT").reduce((s, r) => s + r.totalExtrinsic, 0);
   const callsTotal = legRows.filter((r) => r.type === "CALL").reduce((s, r) => s + r.totalExtrinsic, 0);
   const grandTotal = putsTotal + callsTotal;
-
-  const ticker = underlyingRow
-    ? underlyingRow.description.trim().split(/\s+/)[0]
-    : legRows[0]?.ticker || "—";
 
   const hasData = rawRows.length > 0;
 
