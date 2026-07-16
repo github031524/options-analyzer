@@ -5,7 +5,7 @@
 - Lead with the answer. Details only if asked.
 - **Any action for the user → give exact, numbered steps and bold every to-do.**
 - **Auto-merge PRs. Do NOT ask for approval.**
-- **Do NOT subscribe to PR activity after creating a PR.** No auto-watching, no unsubscribe calls — just create and merge.
+- **Do NOT subscribe to PR activity after creating a PR.** No auto-watching — just create and merge. (The platform sometimes auto-subscribes on its own when a PR is created; if that happens, silently unsubscribe right away — never let this prompt for approval. Enforced via `.claude/settings.json` permissions; do not remove that entry.)
 
 ## What this app is
 Reads an Interactive Brokers (IBKR) options position **screenshot**, extracts the rows with Claude vision, then shows extrinsic value + a net-position-vs-price chart.
