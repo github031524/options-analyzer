@@ -162,7 +162,12 @@ export default function OptionsPositionAnalyzer() {
   const inputRef = useRef(null);
 
   const mergeRows = (prev, incoming) => {
-    const map = new Map(prev.map((r) => [r.description, r]));
+    if (incoming.length === 0) return prev;
+    const tickerOf = (r) => r.description.trim().split(/\s+/)[0];
+    const prevTicker = prev.length > 0 ? tickerOf(prev[0]) : null;
+    const nextTicker = tickerOf(incoming[0]);
+    const base = prevTicker && prevTicker !== nextTicker ? [] : prev;
+    const map = new Map(base.map((r) => [r.description, r]));
     for (const r of incoming) map.set(r.description, r);
     return Array.from(map.values());
   };
