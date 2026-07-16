@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Upload, Loader2, Trash2, Plus } from "lucide-react";
 
 const ACCENT = "#5980a6";
@@ -169,7 +169,12 @@ export default function OptionsPositionAnalyzer() {
 
   const handleFiles = useCallback(async (files) => {
     const images = files.filter((f) => f.type.startsWith("image/"));
-    if (images.length === 0) return;
+    if (images.length === 0) {
+      setError(
+        "No image file found in that drop. Make sure you're dragging a saved screenshot file (not an image from inside a webpage or chat window) — or copy the screenshot and paste it here with Ctrl/Cmd+V."
+      );
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -194,6 +199,24 @@ export default function OptionsPositionAnalyzer() {
     handleFiles(Array.from(e.target.files));
     e.target.value = "";
   };
+  const onPaste = useCallback(
+    (e) => {
+      const files = Array.from(e.clipboardData?.items || [])
+        .filter((item) => item.kind === "file")
+        .map((item) => item.getAsFile())
+        .filter(Boolean);
+      if (files.length > 0) {
+        e.preventDefault();
+        handleFiles(files);
+      }
+    },
+    [handleFiles]
+  );
+
+  useEffect(() => {
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [onPaste]);
 
   const underlyingRow = rawRows.find((r) => !parseLeg(r.description));
   const stockPrice = underlyingRow ? Number(underlyingRow.last) : null;
@@ -265,7 +288,7 @@ export default function OptionsPositionAnalyzer() {
         ) : (
           <div>
             <Upload size={22} className="dropzone__icon" />
-            <p className="dropzone__title">Drop an IBKR position screenshot here</p>
+            <p className="dropzone__title">Drop, paste (Ctrl/Cmd+V), or click to add an IBKR position screenshot</p>
             <p className="dropzone__subtitle">Include the column headers for best accuracy</p>
           </div>
         )}
