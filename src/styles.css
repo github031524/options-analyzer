@@ -1,0 +1,655 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+
+/* ==========================================================================
+   NC FUTURES — PLATFORM STYLESHEET v1.0
+   Implements Finance Platform Design Specification v1.0.
+   One stylesheet. Every module links this and supplies only the content region.
+
+   CONTENTS
+     01  Tokens
+     02  Reset & base
+     03  Type
+     04  Shell — top bar, context bar, content region
+     05  Blueprint frame
+     06  Buttons & tags
+     07  KPI tile
+     08  Data table
+     09  Tabs
+     10  Fields & inputs
+     11  Grid helpers
+     12  Numeric & delta treatment
+   ========================================================================== */
+
+
+/* 01 · TOKENS ============================================================= */
+
+:root {
+  /* Color */
+  --color-bg:      #f2f2f3;
+  --color-surface: #e9e9ea;
+  --color-text:    #1d1f20;
+  --color-loss:    #a6595e;
+
+  /* Accent ramp — 500 is base; 100–300 tinted fills & hovers;
+     700–900 text on tint and pressed states. */
+  --color-accent-100: #edf2f7;
+  --color-accent-200: #dbe4ee;
+  --color-accent-300: #c0d0e0;
+  --color-accent-400: #8fa9c4;
+  --color-accent-500: #5980a6;
+  --color-accent-600: #4d6f90;
+  --color-accent-700: #3f5b77;
+  --color-accent-800: #32485e;
+  --color-accent-900: #253544;
+
+  --color-accent: var(--color-accent-500);
+  --color-gain:   var(--color-accent-700);
+
+  /* Hairline — the only border in the system */
+  --hairline-color: #c9cacc;
+  --hairline: 1px solid var(--hairline-color);
+
+  /* Type */
+  --font-heading: "Inter", system-ui, -apple-system, sans-serif;
+  --font-body:    "Inter", system-ui, -apple-system, sans-serif;
+
+  --size-title:   clamp(34px, 3.2vw, 40px);
+  --size-section: 15px;
+  --size-figure:  27px;
+  --size-body:    14px;
+  --size-label:   10.5px;
+  --size-micro:   9.5px;
+
+  --track-label: 0.13em;
+
+  /* Spacing — 0.85× scale, 3.4 → 27.2px */
+  --space-1: 3.4px;
+  --space-2: 6.8px;
+  --space-3: 10.2px;
+  --space-4: 13.6px;
+  --space-5: 17px;
+  --space-6: 20.4px;
+  --space-7: 23.8px;
+  --space-8: 27.2px;
+
+  /* Table density — compact by default across the platform */
+  --table-cell-py: 5px;
+  --table-cell-px: 10px;
+
+  /* Layout */
+  --radius: 0;
+  --content-max: 1320px;
+  --gutter: clamp(16px, 3vw, 32px);
+  --grid-gap: clamp(12px, 1.5vw, 20px);
+  --topbar-h: 62px;
+}
+
+
+/* 02 · RESET & BASE ======================================================= */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+* { border-radius: var(--radius); }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--size-body);
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+img, svg, canvas { display: block; max-width: 100%; }
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+
+/* 03 · TYPE =============================================================== */
+
+h1, h2, h3, h4, h5, h6,
+.title, .section-head, .label, .figure {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.title {
+  font-size: var(--size-title);
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+}
+
+.section-head {
+  font-size: var(--size-section);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.label {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  line-height: 1.3;
+  color: var(--color-accent-800);
+}
+
+.micro {
+  font-family: var(--font-body);
+  font-size: var(--size-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-accent-800);
+}
+
+p { margin: 0 0 var(--space-4); }
+p:last-child { margin-bottom: 0; }
+
+
+/* 04 · SHELL ============================================================== */
+
+/* A · Global top bar — 62px, sticky, hairline base */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  height: var(--topbar-h);
+  padding: 0 var(--gutter);
+  background: var(--color-bg);
+  border-bottom: var(--hairline);
+}
+
+.topbar__brand {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.topbar__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.topbar__link {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.topbar__link:hover,
+.topbar__link[aria-current] { color: var(--color-accent-700); }
+
+.topbar__search {
+  flex: 1;
+  min-width: 0;
+  max-width: 420px;
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: auto;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: var(--hairline);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-micro);
+  letter-spacing: 0.06em;
+}
+
+/* B · App context bar — breadcrumb + status, surface fill */
+.contextbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--gutter);
+  background: var(--color-surface);
+  border-bottom: var(--hairline);
+  font-size: var(--size-label);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+}
+
+.contextbar__crumb { color: var(--color-text); }
+.contextbar__crumb a { color: inherit; text-decoration: none; }
+.contextbar__crumb a:hover { color: var(--color-accent-700); }
+.contextbar__sep { color: var(--color-accent-400); }
+.contextbar__status { margin-left: auto; }
+
+/* C · Content region — the only part an app owns */
+.content {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: clamp(22px, 3vw, 40px) var(--gutter);
+}
+
+
+/* 05 · BLUEPRINT FRAME — THE SIGNATURE ==================================== */
+
+.blueprint {
+  position: relative;
+  border: var(--hairline);
+  background: transparent;
+}
+
+.blueprint .corner {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  pointer-events: none;
+  color: var(--color-accent-500);
+}
+
+.blueprint .corner::before,
+.blueprint .corner::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+
+.blueprint .corner::before {   /* horizontal stroke */
+  top: 3px;
+  left: 0;
+  width: 7px;
+  height: 1px;
+}
+
+.blueprint .corner::after {    /* vertical stroke */
+  left: 3px;
+  top: 0;
+  width: 1px;
+  height: 7px;
+}
+
+.blueprint .corner.tl { top: -4px; left: -4px; }
+.blueprint .corner.tr { top: -4px; right: -4px; }
+.blueprint .corner.bl { bottom: -4px; left: -4px; }
+.blueprint .corner.br { bottom: -4px; right: -4px; }
+
+/* Tinted variant — e.g. today's cell in a tracker */
+.blueprint--tint { background: var(--color-accent-100); }
+
+
+/* 06 · BUTTONS & TAGS ===================================================== */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border: var(--hairline);
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms linear, color 120ms linear;
+}
+
+.btn:hover { background: var(--color-accent-100); }
+.btn:active { background: var(--color-accent-200); color: var(--color-accent-900); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* THE ONE EXCEPTION — the single solid object in the system.
+   Accent fill, square corners, corner marks retained. */
+.btn-primary {
+  background: var(--color-accent-500);
+  border-color: var(--color-accent-500);
+  color: #fff;
+}
+
+.btn-primary:hover { background: var(--color-accent-600); border-color: var(--color-accent-600); }
+.btn-primary:active { background: var(--color-accent-800); border-color: var(--color-accent-800); color: #fff; }
+
+.btn-primary .corner { color: #fff; }
+
+/* Ghost — outline only, no hairline box */
+.btn-ghost {
+  border-color: transparent;
+  padding-inline: var(--space-2);
+}
+.btn-ghost:hover { border-color: var(--hairline-color); background: transparent; }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border: var(--hairline);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+}
+
+.tag-accent {
+  border-color: var(--color-accent-500);
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+}
+
+
+/* 07 · KPI TILE =========================================================== */
+
+.kpi {
+  padding: var(--space-5);
+}
+
+.kpi__label {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-accent-800);
+}
+
+.kpi__figure {
+  margin-top: var(--space-2);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-figure);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.kpi__delta {
+  margin-top: var(--space-1);
+  font-size: var(--size-label);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+
+/* 08 · DATA TABLE ========================================================= */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--size-body);
+}
+
+.table th {
+  padding: var(--table-cell-py) var(--table-cell-px);
+  border-bottom: var(--hairline);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  text-align: left;
+  color: var(--color-accent-800);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--table-cell-py) var(--table-cell-px);
+  border-bottom: var(--hairline);
+  font-weight: 400;
+}
+
+.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover { background: var(--color-accent-100); }
+
+/* Numbers right-aligned & tabular */
+.table th.num,
+.table td.num,
+.table th:not(:first-child),
+.table td:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th.text,
+.table td.text { text-align: left; font-variant-numeric: normal; }
+
+.table tfoot td {
+  font-weight: 600;
+  border-top: var(--hairline);
+  border-bottom: none;
+}
+
+/* Wrap tables in .blueprint; this keeps the frame flush */
+.blueprint > .table:only-child { display: table; }
+
+
+/* 09 · TABS =============================================================== */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: var(--hairline);
+}
+
+.tab {
+  padding: var(--space-3) var(--space-5);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--color-accent-800);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  cursor: pointer;
+}
+
+.tab:hover { color: var(--color-text); }
+
+.tab[aria-selected="true"] {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent-500);
+}
+
+
+/* 10 · FIELDS & INPUTS ==================================================== */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.field > label {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-accent-800);
+}
+
+.input,
+select.input,
+textarea.input {
+  width: 100%;
+  padding: var(--space-3) var(--space-3);
+  border: var(--hairline);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.input::placeholder {
+  color: var(--color-accent-400);
+  text-transform: uppercase;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+}
+
+.input:focus {
+  outline: 0;
+  border-color: var(--color-accent-500);
+  box-shadow: inset 0 0 0 1px var(--color-accent-500);
+}
+
+
+/* 11 · GRID HELPERS ======================================================= */
+
+.grid {
+  display: grid;
+  gap: var(--grid-gap);
+}
+
+.grid--kpi { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.grid--week { grid-template-columns: repeat(5, 1fr); }
+
+/* Layout recipes — §06 of the spec */
+.split--dashboard { display: grid; gap: var(--grid-gap); grid-template-columns: 2.1fr 1fr; }
+.split--screener  { display: grid; gap: var(--grid-gap); grid-template-columns: 260px 1fr; }
+.split--list      { display: grid; gap: var(--grid-gap); grid-template-columns: 1.5fr 1fr; }
+
+@media (max-width: 900px) {
+  .split--dashboard,
+  .split--screener,
+  .split--list { grid-template-columns: 1fr; }
+  .grid--week { grid-template-columns: repeat(2, 1fr); }
+  .topbar__search { display: none; }
+}
+
+
+/* 12 · NUMERIC & DELTA TREATMENT ========================================== */
+
+.num,
+.figure,
+[data-num] {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Gains → accent-700. Losses → the one terracotta. Nothing else is colored. */
+.gain { color: var(--color-gain); }
+.loss { color: var(--color-loss); }
+
+.kpi__figure--accent { color: var(--color-accent-800); }
+
+
+/* 13 · OPTIONS POSITION ANALYZER — APP-SPECIFIC ========================== */
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+}
+
+.app-ticker {
+  font-size: 26px;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.app-spot {
+  color: var(--color-accent-800);
+  font-weight: 500;
+  text-transform: none;
+}
+
+.app-error {
+  color: var(--color-loss);
+  font-size: 12.5px;
+  margin-top: -12px;
+  margin-bottom: var(--space-6);
+}
+
+.app-kpis { margin-bottom: var(--space-6); }
+
+.dropzone {
+  border: var(--hairline);
+  padding: 40px 20px;
+  margin-bottom: var(--space-6);
+  text-align: center;
+  cursor: pointer;
+}
+
+.dropzone--compact { padding: 12px 20px; }
+
+.dropzone--active {
+  border-color: var(--color-accent-500);
+  background: var(--color-accent-100);
+}
+
+.dropzone__loading,
+.dropzone__add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.dropzone__loading {
+  font-size: 13px;
+  color: var(--color-accent-800);
+}
+
+.dropzone__add {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-accent-800);
+}
+
+.dropzone__icon { color: var(--color-accent-500); margin-bottom: var(--space-3); }
+
+.dropzone__title { margin: 0; font-size: 13px; font-weight: 500; }
+
+.dropzone__subtitle {
+  margin: var(--space-1) 0 0;
+  font-size: 11.5px;
+  color: var(--color-accent-800);
+}
+
+.spin { animation: app-spin 1s linear infinite; }
+
+@keyframes app-spin {
+  to { transform: rotate(360deg); }
+}
