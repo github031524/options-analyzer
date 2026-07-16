@@ -5,6 +5,7 @@
 - Lead with the answer. Details only if asked.
 - **Any action for the user → give exact, numbered steps and bold every to-do.**
 - **Auto-merge PRs. Do NOT ask for approval.**
+- **Don't prompt to unsubscribe from PR activity — always allow it.** (Enforced via `.claude/settings.json` permissions.)
 
 ## What this app is
 Reads an Interactive Brokers (IBKR) options position **screenshot**, extracts the rows with Claude vision, then shows extrinsic value + a net-position-vs-price chart.
