@@ -114,6 +114,12 @@ function fmtMoney(n) {
   return `${sign}${Math.abs(Math.round(n)).toLocaleString()}`;
 }
 
+function signClass(n) {
+  if (n > 0) return "gain";
+  if (n < 0) return "loss";
+  return "kpi__figure--accent";
+}
+
 function fmtShort(n) {
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
@@ -396,25 +402,25 @@ export default function OptionsPositionAnalyzer() {
             <Blueprint>
               <div className="kpi">
                 <p className="kpi__label">Net position at spot</p>
-                <p className={`kpi__figure ${netAtSpot < 0 ? "loss" : "kpi__figure--accent"}`}>{fmtMoney(netAtSpot)}</p>
+                <p className={`kpi__figure ${signClass(netAtSpot)}`}>{fmtMoney(netAtSpot)}</p>
               </div>
             </Blueprint>
             <Blueprint>
               <div className="kpi">
                 <p className="kpi__label">Puts total extrinsic</p>
-                <p className="kpi__figure">{fmtMoney(putsTotal)}</p>
+                <p className={`kpi__figure ${signClass(putsTotal)}`}>{fmtMoney(putsTotal)}</p>
               </div>
             </Blueprint>
             <Blueprint>
               <div className="kpi">
                 <p className="kpi__label">Calls total extrinsic</p>
-                <p className="kpi__figure">{fmtMoney(callsTotal)}</p>
+                <p className={`kpi__figure ${signClass(callsTotal)}`}>{fmtMoney(callsTotal)}</p>
               </div>
             </Blueprint>
             <Blueprint>
               <div className="kpi">
                 <p className="kpi__label">Total extrinsic</p>
-                <p className="kpi__figure">{fmtMoney(grandTotal)}</p>
+                <p className={`kpi__figure ${signClass(grandTotal)}`}>{fmtMoney(grandTotal)}</p>
               </div>
             </Blueprint>
           </div>
@@ -439,14 +445,14 @@ export default function OptionsPositionAnalyzer() {
                     <td>{r.last.toFixed(2)}</td>
                     <td>{r.intrinsic.toFixed(2)}</td>
                     <td>{r.extrinsic.toFixed(2)}</td>
-                    <td>{fmtMoney(r.totalExtrinsic)}</td>
+                    <td className={signClass(r.totalExtrinsic)}>{fmtMoney(r.totalExtrinsic)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr><td colSpan={6}>Puts total extrinsic</td><td>{fmtMoney(putsTotal)}</td></tr>
-                <tr><td colSpan={6}>Calls total extrinsic</td><td>{fmtMoney(callsTotal)}</td></tr>
-                <tr><td colSpan={6}>Total extrinsic</td><td>{fmtMoney(grandTotal)}</td></tr>
+                <tr><td colSpan={6}>Puts total extrinsic</td><td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td></tr>
+                <tr><td colSpan={6}>Calls total extrinsic</td><td className={signClass(callsTotal)}>{fmtMoney(callsTotal)}</td></tr>
+                <tr><td colSpan={6}>Total extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
               </tfoot>
             </table>
           </Blueprint>
