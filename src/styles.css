@@ -29,6 +29,8 @@
   --color-surface: #e9e9ea;
   --color-text:    #1d1f20;
   --color-loss:    #a6595e;
+  --color-put-tint:  #eef2f7;
+  --color-call-tint: #f7f0e3;
 
   /* Accent ramp — 500 is base; 100–300 tinted fills & hovers;
      700–900 text on tint and pressed states. */
@@ -434,6 +436,25 @@ p:last-child { margin-bottom: 0; }
 
 .table tbody tr:last-child td { border-bottom: 0; }
 .table tbody tr:hover { background: var(--color-accent-100); }
+
+.table tbody tr.row-put { background: var(--color-put-tint); }
+.table tbody tr.row-call { background: var(--color-call-tint); }
+.table tbody tr.row-put:hover,
+.table tbody tr.row-call:hover { background: var(--color-accent-100); }
+
+.table tbody tr.table-section td {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-accent-800);
+  background: var(--color-bg);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-1);
+  border-bottom: none;
+}
+.table tbody tr.table-section:first-child td { padding-top: var(--table-cell-py); }
 
 /* Numbers right-aligned & tabular */
 .table th.num,

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, Fragment } from "react";
 import { Upload, Loader2, Trash2, Plus } from "lucide-react";
 
 const ACCENT = "#5980a6";
@@ -438,15 +438,22 @@ export default function OptionsPositionAnalyzer() {
               </thead>
               <tbody>
                 {legRows.map((r, i) => (
-                  <tr key={i}>
-                    <td>{r.strike}</td>
-                    <td className="text">{r.type}</td>
-                    <td>{r.position}</td>
-                    <td>{r.last.toFixed(2)}</td>
-                    <td>{r.intrinsic.toFixed(2)}</td>
-                    <td>{r.extrinsic.toFixed(2)}</td>
-                    <td className={signClass(r.totalExtrinsic)}>{fmtMoney(r.totalExtrinsic)}</td>
-                  </tr>
+                  <Fragment key={i}>
+                    {r.type !== legRows[i - 1]?.type && (
+                      <tr className="table-section">
+                        <td colSpan={7}>{r.type === "PUT" ? "Puts" : "Calls"}</td>
+                      </tr>
+                    )}
+                    <tr className={r.type === "PUT" ? "row-put" : "row-call"}>
+                      <td>{r.strike}</td>
+                      <td className="text">{r.type}</td>
+                      <td>{r.position}</td>
+                      <td>{r.last.toFixed(2)}</td>
+                      <td>{r.intrinsic.toFixed(2)}</td>
+                      <td>{r.extrinsic.toFixed(2)}</td>
+                      <td className={signClass(r.totalExtrinsic)}>{fmtMoney(r.totalExtrinsic)}</td>
+                    </tr>
+                  </Fragment>
                 ))}
               </tbody>
               <tfoot>
