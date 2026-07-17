@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Upload, Loader2, Trash2, Plus } from "lucide-react";
 
 const ACCENT = "#5980a6";
-const ACCENT_TINT = "#edf2f7";
+const ACCENT_TINT = "#dbe4ee";
 const ACCENT_TEXT = "#32485e";
 const HAIRLINE = "#c9cacc";
 const LOSS = "#a6595e";
@@ -120,6 +120,17 @@ function fmtShort(n) {
   return abs >= 1000 ? `${sign}${Math.round(abs / 1000)}K` : `${sign}${Math.round(abs)}`;
 }
 
+// Smallest "nice" number (1/2/5 x a power of ten) at or above value, so the
+// chart's y-axis scales to the data instead of a fixed step that can make
+// small positions look visually flat.
+function niceCeil(value) {
+  if (value <= 0) return 1;
+  const exponent = Math.floor(Math.log10(value));
+  const fraction = value / 10 ** exponent;
+  const niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+  return niceFraction * 10 ** exponent;
+}
+
 // ---------- chart ----------
 
 function StepChart({ curve, ticker }) {
@@ -134,7 +145,7 @@ function StepChart({ curve, ticker }) {
   const plotH = H - mT - mB;
 
   const maxAbs = Math.max(1, ...segments.map((s) => Math.abs(s.y)));
-  const niceMax = Math.ceil(maxAbs / 5000) * 5000 || 5000;
+  const niceMax = niceCeil(maxAbs);
 
   const xScale = (p) => mL + ((p - domainMin) / (domainMax - domainMin)) * plotW;
   const priceAt = (x) => domainMin + ((x - mL) / plotW) * (domainMax - domainMin);
@@ -203,7 +214,7 @@ function StepChart({ curve, ticker }) {
       {strikes.map((k) => (
         <line key={k} x1={xScale(k)} y1={mT} x2={xScale(k)} y2={H - mB} stroke={HAIRLINE} strokeWidth="1" />
       ))}
-      <line x1={mL} y1={zeroY} x2={W - mR} y2={zeroY} stroke={HAIRLINE} strokeWidth="1" strokeDasharray="2 3" />
+      <line x1={mL} y1={zeroY} x2={W - mR} y2={zeroY} stroke={ACCENT_TEXT} strokeWidth="1.75" />
       <path d={area} fill={ACCENT_TINT} />
       <path d={line} fill="none" stroke={ACCENT} strokeWidth="2" strokeLinejoin="miter" />
       <text x={mL - 10} y={mT + 10} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(niceMax)}</text>
@@ -324,7 +335,7 @@ export default function OptionsPositionAnalyzer() {
       return { ...leg, position, last, intrinsic, extrinsic, totalExtrinsic };
     })
     .filter(Boolean)
-    .sort((a, b) => a.strike - b.strike || a.type.localeCompare(b.type));
+    .sort((a, b) => (a.type === b.type ? a.strike - b.strike : a.type === "PUT" ? -1 : 1));
 
   const curve = stockPrice != null && legRows.length > 0 ? buildCurve(legRows, baselineShift, sharesPerContract) : null;
   const netAtSpot = stockPrice != null ? netPositionAt(legRows, baselineShift, stockPrice, sharesPerContract) : null;
