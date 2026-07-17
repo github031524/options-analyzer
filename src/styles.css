@@ -28,7 +28,7 @@
   --color-bg:      #f2f2f3;
   --color-surface: #e9e9ea;
   --color-text:    #1d1f20;
-  --color-loss:    #a6595e;
+  --color-loss:    #ff0000;
   --color-put-tint:  #eef2f7;
   --color-call-tint: #f7f0e3;
 
@@ -45,7 +45,7 @@
   --color-accent-900: #253544;
 
   --color-accent: var(--color-accent-500);
-  --color-gain:   #4f8a5c;
+  --color-gain:   #00ff00;
 
   /* Hairline — the only border in the system */
   --hairline-color: #c9cacc;
