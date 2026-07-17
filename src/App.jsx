@@ -407,19 +407,19 @@ export default function OptionsPositionAnalyzer() {
             </Blueprint>
             <Blueprint>
               <div className="kpi">
-                <p className="kpi__label">Puts total extrinsic</p>
+                <p className={`kpi__label ${signClass(putsTotal)}`}>Puts total extrinsic</p>
                 <p className={`kpi__figure ${signClass(putsTotal)}`}>{fmtMoney(putsTotal)}</p>
               </div>
             </Blueprint>
             <Blueprint>
               <div className="kpi">
-                <p className="kpi__label">Calls total extrinsic</p>
+                <p className={`kpi__label ${signClass(callsTotal)}`}>Calls total extrinsic</p>
                 <p className={`kpi__figure ${signClass(callsTotal)}`}>{fmtMoney(callsTotal)}</p>
               </div>
             </Blueprint>
             <Blueprint>
               <div className="kpi">
-                <p className="kpi__label">Total extrinsic</p>
+                <p className={`kpi__label ${signClass(grandTotal)}`}>Total extrinsic</p>
                 <p className={`kpi__figure ${signClass(grandTotal)}`}>{fmtMoney(grandTotal)}</p>
               </div>
             </Blueprint>
@@ -450,9 +450,9 @@ export default function OptionsPositionAnalyzer() {
                 ))}
               </tbody>
               <tfoot>
-                <tr><td colSpan={6}>Puts total extrinsic</td><td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td></tr>
-                <tr><td colSpan={6}>Calls total extrinsic</td><td className={signClass(callsTotal)}>{fmtMoney(callsTotal)}</td></tr>
-                <tr><td colSpan={6}>Total extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
+                <tr><td colSpan={6} className={signClass(putsTotal)}>Puts total extrinsic</td><td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td></tr>
+                <tr><td colSpan={6} className={signClass(callsTotal)}>Calls total extrinsic</td><td className={signClass(callsTotal)}>{fmtMoney(callsTotal)}</td></tr>
+                <tr><td colSpan={6} className={signClass(grandTotal)}>Total extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
               </tfoot>
             </table>
           </Blueprint>

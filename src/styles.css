@@ -43,7 +43,7 @@
   --color-accent-900: #253544;
 
   --color-accent: var(--color-accent-500);
-  --color-gain:   var(--color-accent-700);
+  --color-gain:   #4f8a5c;
 
   /* Hairline — the only border in the system */
   --hairline-color: #c9cacc;
@@ -566,9 +566,13 @@ textarea.input {
   text-align: right;
 }
 
-/* Gains → accent-700. Losses → the one terracotta. Nothing else is colored. */
-.gain { color: var(--color-gain); }
-.loss { color: var(--color-loss); }
+.gain { color: var(--color-gain); font-weight: 700; }
+.loss { color: var(--color-loss); font-weight: 700; }
+
+/* .table td/.table tfoot td set their own font-weight at higher specificity
+   (class+type / class+2 types) -- this beats both so gain/loss stay bold there. */
+.table td.gain,
+.table td.loss { font-weight: 700; }
 
 .kpi__figure--accent { color: var(--color-accent-800); }
 
