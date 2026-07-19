@@ -270,6 +270,7 @@ p:last-child { margin-bottom: 0; }
   border: var(--hairline);
   background: transparent;
   margin-bottom: 12px;
+  padding: var(--space-5);
 }
 
 /* Tinted variant — e.g. today's cell in a tracker */
@@ -344,7 +345,10 @@ p:last-child { margin-bottom: 0; }
 /* 07 · KPI TILE =========================================================== */
 
 .kpi {
-  padding: var(--space-5);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .kpi__label {
@@ -354,10 +358,10 @@ p:last-child { margin-bottom: 0; }
   text-transform: uppercase;
   letter-spacing: var(--track-label);
   color: var(--color-accent-800);
+  white-space: nowrap;
 }
 
 .kpi__figure {
-  margin-top: 2px;
   font-family: var(--font-heading);
   font-weight: 600;
   font-size: 18px;
