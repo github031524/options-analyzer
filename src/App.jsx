@@ -237,12 +237,7 @@ function StepChart({ curve, ticker }) {
 // ---------- blueprint frame ----------
 
 function Blueprint({ children, className = "" }) {
-  return (
-    <div className={`blueprint ${className}`}>
-      <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
-      {children}
-    </div>
-  );
+  return <div className={`blueprint ${className}`}>{children}</div>;
 }
 
 // ---------- main ----------
