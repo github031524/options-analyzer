@@ -272,40 +272,6 @@ p:last-child { margin-bottom: 0; }
   margin-bottom: 12px;
 }
 
-.blueprint .corner {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  pointer-events: none;
-  color: var(--color-accent-500);
-}
-
-.blueprint .corner::before,
-.blueprint .corner::after {
-  content: "";
-  position: absolute;
-  background: currentColor;
-}
-
-.blueprint .corner::before {   /* horizontal stroke */
-  top: 3px;
-  left: 0;
-  width: 7px;
-  height: 1px;
-}
-
-.blueprint .corner::after {    /* vertical stroke */
-  left: 3px;
-  top: 0;
-  width: 1px;
-  height: 7px;
-}
-
-.blueprint .corner.tl { top: -4px; left: -4px; }
-.blueprint .corner.tr { top: -4px; right: -4px; }
-.blueprint .corner.bl { bottom: -4px; left: -4px; }
-.blueprint .corner.br { bottom: -4px; right: -4px; }
-
 /* Tinted variant — e.g. today's cell in a tracker */
 .blueprint--tint { background: var(--color-accent-100); }
 
