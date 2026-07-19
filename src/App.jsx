@@ -126,15 +126,15 @@ function fmtShort(n) {
   return abs >= 1000 ? `${sign}${Math.round(abs / 1000)}K` : `${sign}${Math.round(abs)}`;
 }
 
-// Smallest "nice" number (1/2/5 x a power of ten) at or above value, so the
-// chart's y-axis scales to the data instead of a fixed step that can make
-// small positions look visually flat.
+// Smallest 2-significant-figure number at or above value*1.1 (10% headroom),
+// so the chart's y-axis hugs the data instead of a coarse 1/2/5 step that can
+// round a value like 260 all the way up to 500 and make the line look flat.
 function niceCeil(value) {
   if (value <= 0) return 1;
-  const exponent = Math.floor(Math.log10(value));
-  const fraction = value / 10 ** exponent;
-  const niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
-  return niceFraction * 10 ** exponent;
+  const padded = value * 1.1;
+  const exponent = Math.floor(Math.log10(padded)) - 1;
+  const step = 10 ** exponent;
+  return Math.ceil(padded / step) * step;
 }
 
 // ---------- chart ----------
