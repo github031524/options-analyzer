@@ -375,18 +375,29 @@ a.topbar__modules-item:hover { background: var(--color-accent-100); }
 
 .kpi__label {
   font-family: var(--font-heading);
-  font-weight: 600;
-  font-size: var(--size-label);
+  font-weight: 500;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: var(--track-label);
   color: var(--color-accent-800);
+  /* min-width:0 lets the label shrink below its content width, so a wide
+     figure truncates the label rather than getting squeezed itself — the
+     number is the point of the tile. */
+  min-width: 0;
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
+/* The spot tile's label is the ticker itself — the tile's identity, so it
+   carries more weight visually than the stat labels beside it. */
+.kpi__label--ticker { font-size: 16px; }
+
 .kpi__figure {
+  flex: none;
   font-family: var(--font-heading);
   font-weight: 600;
-  font-size: 18px;
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
