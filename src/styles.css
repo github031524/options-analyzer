@@ -368,6 +368,11 @@ a.topbar__modules-item:hover { background: var(--color-accent-100); }
   gap: var(--space-3);
 }
 
+/* Label and figure are <p>, so they inherit the global bottom margin. They sit
+   side by side on one line, so that margin only inflates the tile — drop it. */
+.kpi__label,
+.kpi__figure { margin: 0; }
+
 .kpi__label {
   font-family: var(--font-heading);
   font-weight: 600;
@@ -614,6 +619,14 @@ textarea.input {
 }
 
 .app-kpis { margin-bottom: var(--space-6); }
+
+/* KPI label and figure sit on one line, so the shared .blueprint vertical
+   padding is more than these tiles need — trim it here only, leaving the
+   chart and table panels at the default. */
+.app-kpis .blueprint {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
 
 .dropzone {
   border: var(--hairline);
