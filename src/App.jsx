@@ -150,12 +150,20 @@ function StepChart({ curve, ticker }) {
   const plotW = W - mL - mR;
   const plotH = H - mT - mB;
 
-  const maxAbs = Math.max(1, ...segments.map((s) => Math.abs(s.y)));
-  const niceMax = niceCeil(maxAbs);
+  // Size each side of zero independently — a position that never goes negative
+  // shouldn't spend half the chart on an empty negative half. Zero always stays
+  // on the axis (it's the reference the whole chart is about), just not forced
+  // to the middle.
+  const values = segments.map((s) => s.y);
+  const dataMax = Math.max(0, ...values);
+  const dataMin = Math.min(0, ...values);
+  let yMax = dataMax > 0 ? niceCeil(dataMax) : 0;
+  let yMin = dataMin < 0 ? -niceCeil(-dataMin) : 0;
+  if (yMax === yMin) { yMax = 1; yMin = -1; }  // curve is flat on zero
 
   const xScale = (p) => mL + ((p - domainMin) / (domainMax - domainMin)) * plotW;
   const priceAt = (x) => domainMin + ((x - mL) / plotW) * (domainMax - domainMin);
-  const yScale = (v) => mT + ((niceMax - v) / (niceMax * 2)) * plotH;
+  const yScale = (v) => mT + ((yMax - v) / (yMax - yMin)) * plotH;
   const zeroY = yScale(0);
   const segmentAt = (price) => segments.find((s) => price >= s.x0 && price <= s.x1) || segments[segments.length - 1];
 
@@ -212,7 +220,7 @@ function StepChart({ curve, ticker }) {
       viewBox={`0 0 ${W} ${H}`}
       width="100%"
       role="img"
-      aria-label={`Step chart of net underlying position for ${ticker} across strike prices, ranging from ${fmtShort(-niceMax)} to ${fmtShort(niceMax)} shares`}
+      aria-label={`Step chart of net underlying position for ${ticker} across strike prices, ranging from ${fmtShort(yMin)} to ${fmtShort(yMax)} shares`}
       onMouseMove={handleMove}
       onMouseLeave={handleLeave}
       style={{ cursor: "crosshair" }}
@@ -223,9 +231,13 @@ function StepChart({ curve, ticker }) {
       <line x1={mL} y1={zeroY} x2={W - mR} y2={zeroY} stroke={ACCENT_TEXT} strokeWidth="1.75" />
       <path d={area} fill={ACCENT_TINT} />
       <path d={line} fill="none" stroke={ACCENT} strokeWidth="2" strokeLinejoin="miter" />
-      <text x={mL - 10} y={mT + 10} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(niceMax)}</text>
+      {yMax !== 0 && (
+        <text x={mL - 10} y={yScale(yMax) + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(yMax)}</text>
+      )}
       <text x={mL - 10} y={zeroY + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">0</text>
-      <text x={mL - 10} y={H - mB + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(-niceMax)}</text>
+      {yMin !== 0 && (
+        <text x={mL - 10} y={yScale(yMin) + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(yMin)}</text>
+      )}
       {strikes.map((k) => (
         <text key={k} x={xScale(k)} y={H - mB + 18} textAnchor="middle" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{k}</text>
       ))}
