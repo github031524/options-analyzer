@@ -380,18 +380,12 @@ a.topbar__modules-item:hover { background: var(--color-accent-100); }
   text-transform: uppercase;
   letter-spacing: var(--track-label);
   color: var(--color-accent-800);
-  /* min-width:0 lets the label shrink below its content width, so a wide
-     figure truncates the label rather than getting squeezed itself — the
-     number is the point of the tile. */
-  min-width: 0;
-  overflow: hidden;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 /* The spot tile's label is the ticker itself — the tile's identity, so it
    carries more weight visually than the stat labels beside it. */
-.kpi__label--ticker { font-size: 16px; }
+.kpi__label--lead { font-size: 16px; }
 
 .kpi__figure {
   flex: none;
@@ -618,7 +612,22 @@ textarea.input {
   margin-bottom: var(--space-6);
 }
 
-.app-kpis { margin-bottom: var(--space-6); }
+/* Tiles size to their own content rather than equal columns, so a long label
+   never has to truncate; leftover space is shared out between them and they
+   wrap to a new line when they no longer fit. */
+.app-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--grid-gap);
+  margin-bottom: var(--space-6);
+}
+
+/* size to content exactly — no growing (a lone tile on a wrapped row would
+   otherwise stretch the full width) and no shrinking (that's what truncated) */
+.app-kpis > .blueprint {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
 
 /* KPI label and figure sit on one line, so the shared .blueprint vertical
    padding is more than these tiles need — trim it here only, leaving the

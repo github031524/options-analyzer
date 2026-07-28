@@ -523,19 +523,10 @@ export default function OptionsPositionAnalyzer() {
 
       {showResults && (
         <>
-          <div className="grid grid--kpi app-kpis">
+          <div className="app-kpis">
             <Blueprint>
               <div className="kpi">
-                <p className="kpi__label kpi__label--ticker">
-                  <a
-                    className="symbol"
-                    href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${ticker.toLowerCase()}`}
-                    target="_blank"
-                    rel="noopener"
-                  >
-                    {ticker}
-                  </a>
-                </p>
+                <p className="kpi__label kpi__label--lead">Spot</p>
                 <p className="kpi__figure">{stockPrice.toLocaleString()}</p>
               </div>
             </Blueprint>
