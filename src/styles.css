@@ -622,10 +622,10 @@ textarea.input {
   margin-bottom: var(--space-6);
 }
 
-/* size to content exactly — no growing (a lone tile on a wrapped row would
-   otherwise stretch the full width) and no shrinking (that's what truncated) */
+/* Grow to share out leftover space so the row fills edge to edge, but never
+   shrink below content — shrinking is what forced labels to truncate. */
 .app-kpis > .blueprint {
-  flex: 0 0 auto;
+  flex: 1 0 auto;
   margin-bottom: 0;
 }
 
