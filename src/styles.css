@@ -1,15 +1,20 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
 
 /* ==========================================================================
-   NC FUTURES — PLATFORM STYLESHEET v1.0
-   Implements Finance Platform Design Specification v1.0.
+   NC FUTURES — PLATFORM STYLESHEET v2.0
+   Implements Finance Platform Design Specification v2.0.
    One stylesheet. Every module links this and supplies only the content region.
+
+   Partial adoption (pick-your-changes, spec §09a). Applied: v2.0 shell
+   (48px top bar, logo, modules switcher; context bar removed), 6px radius,
+   --space-4 blueprint padding, symbol links, resizable columns.
+   Deliberately NOT adopted: v2.0's gain/loss hexes — see the note in §01.
 
    CONTENTS
      01  Tokens
      02  Reset & base
      03  Type
-     04  Shell — top bar, context bar, content region
+     04  Shell — top bar, content region
      05  Blueprint frame
      06  Buttons & tags
      07  KPI tile
@@ -18,6 +23,9 @@
      10  Fields & inputs
      11  Grid helpers
      12  Numeric & delta treatment
+     13  Options analyzer — app-specific
+     15  Symbol / ticker link
+     17  Resizable table columns
    ========================================================================== */
 
 
@@ -28,6 +36,8 @@
   --color-bg:      #f2f2f3;
   --color-surface: #e9e9ea;
   --color-text:    #1d1f20;
+  /* Spec v2.0 names #2e8b57 / #c0392b, but those measure 3.79:1 and 4.86:1
+     against the page background -- below this app's required 5:1 floor. */
   --color-loss:    #b42d36;
   --color-put-tint:  #eef2f7;
   --color-call-tint: #f7f0e3;
@@ -79,11 +89,11 @@
   --table-cell-px: 10px;
 
   /* Layout */
-  --radius: 0;
+  --radius: 6px;
   --content-max: 1680px;
   --gutter: clamp(16px, 3vw, 32px);
   --grid-gap: clamp(12px, 1.5vw, 20px);
-  --topbar-h: 62px;
+  --topbar-h: 48px;
 }
 
 
@@ -167,7 +177,11 @@ p:last-child { margin-bottom: 0; }
 
 /* 04 · SHELL ============================================================== */
 
-/* A · Global top bar — 62px, sticky, hairline base */
+/* Two layers, not three (spec v2.0 §03) — the v1.0 app context bar
+   (breadcrumb + status) is gone.
+
+   A · Global top bar — 48px, sticky, hairline base. Brand mark (left) +
+   Modules switcher (centered). */
 .topbar {
   position: sticky;
   top: 0;
@@ -182,37 +196,15 @@ p:last-child { margin-bottom: 0; }
 }
 
 .topbar__brand {
-  font-family: var(--font-heading);
-  font-weight: 600;
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
   white-space: nowrap;
 }
 
-.topbar__nav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-}
-
-.topbar__link {
-  font-family: var(--font-heading);
-  font-weight: 600;
-  font-size: var(--size-label);
-  text-transform: uppercase;
-  letter-spacing: var(--track-label);
-  color: var(--color-text);
-  text-decoration: none;
-}
-
-.topbar__link:hover,
-.topbar__link[aria-current] { color: var(--color-accent-700); }
-
-.topbar__search {
-  flex: 1;
-  min-width: 0;
-  max-width: 420px;
+/* The shared logo asset, rendered identically in every module. */
+.topbar__brand img {
+  height: 34.56px;
+  width: auto;
 }
 
 .topbar__actions {
@@ -222,40 +214,61 @@ p:last-child { margin-bottom: 0; }
   margin-left: auto;
 }
 
-.avatar {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: var(--hairline);
-  font-family: var(--font-heading);
-  font-weight: 600;
-  font-size: var(--size-micro);
-  letter-spacing: 0.06em;
-}
-
-/* B · App context bar — breadcrumb + status, surface fill */
-.contextbar {
+/* Modules switcher — taken out of flow and absolutely centered so it stays
+   dead-center regardless of what sits on either side. .topbar is sticky, so
+   this positions against the top bar itself. */
+.topbar__modules {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--gutter);
-  background: var(--color-surface);
-  border-bottom: var(--hairline);
-  font-size: var(--size-label);
-  font-family: var(--font-heading);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--track-label);
 }
 
-.contextbar__crumb { color: var(--color-text); }
-.contextbar__crumb a { color: inherit; text-decoration: none; }
-.contextbar__crumb a:hover { color: var(--color-accent-700); }
-.contextbar__sep { color: var(--color-accent-400); }
-.contextbar__status { margin-left: auto; }
+.topbar__modules-trigger { white-space: nowrap; }
 
-/* C · Content region — the only part an app owns */
+/* Two-class selector on purpose: the menu also carries .blueprint, declared
+   later, which would otherwise win `position: relative` at equal specificity
+   and drop the menu back into flow beside the trigger. */
+.topbar__modules .topbar__modules-menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  padding: var(--space-2);
+  margin-bottom: 0;
+}
+
+.topbar__modules .topbar__modules-menu[hidden] { display: none; }
+
+.topbar__modules-item {
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-text);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+a.topbar__modules-item:hover { background: var(--color-accent-100); }
+
+/* The current app — listed but inert, not a link. */
+.topbar__modules-item[aria-current="page"] {
+  color: var(--color-accent-800);
+  background: var(--color-accent-100);
+  cursor: default;
+}
+
+/* B · Content region — the only part an app owns */
 .content {
   max-width: var(--content-max);
   margin: 0 auto;
@@ -270,11 +283,15 @@ p:last-child { margin-bottom: 0; }
   border: var(--hairline);
   background: transparent;
   margin-bottom: 12px;
-  padding: var(--space-5);
+  padding: var(--space-4);
 }
 
 /* Tinted variant — e.g. today's cell in a tracker */
 .blueprint--tint { background: var(--color-accent-100); }
+
+/* Solid variant — floating panels only (dropdowns, popovers) that need an
+   opaque fill so page content doesn't show through. */
+.blueprint--solid { background: var(--color-bg); }
 
 
 /* 06 · BUTTONS & TAGS ===================================================== */
@@ -650,3 +667,46 @@ textarea.input {
 @keyframes app-spin {
   to { transform: rotate(360deg); }
 }
+
+
+/* 15 · SYMBOL / TICKER LINK =============================================== */
+
+/* Every ticker symbol rendered anywhere links to its TradingView chart in a
+   new tab. Never render a bare, unlinked symbol. */
+
+.symbol {
+  color: var(--color-accent-700);
+  font-weight: 500;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.symbol:hover {
+  color: var(--color-accent-600);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+
+/* 17 · RESIZABLE TABLE COLUMNS (spec §08a) ================================ */
+
+/* A faint always-visible strip at each resizable header's right edge, so the
+   grab target is discoverable; brightens on hover/drag. */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  border-right: 1px solid var(--hairline-color);
+  border-radius: 0;
+}
+
+.resize-handle:hover,
+.resize-handle--active { border-right-color: var(--color-accent-500); }
+
+.table th.is-resizable { position: relative; }

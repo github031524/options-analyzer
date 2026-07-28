@@ -240,6 +240,133 @@ function Blueprint({ children, className = "" }) {
   return <div className={`blueprint ${className}`}>{children}</div>;
 }
 
+// ---------- resizable table columns (spec §08a) ----------
+
+const COLUMNS = [
+  { key: "strike", label: "Strike", width: 110 },
+  { key: "type", label: "Type", width: 110 },
+  { key: "qty", label: "Qty", width: 110 },
+  { key: "last", label: "Last", width: 130 },
+  { key: "intrinsic", label: "Intrinsic", width: 150 },
+  { key: "extrinsic", label: "Extrinsic", width: 150 },
+  { key: "totalExtrinsic", label: "Total extrinsic", width: 190 },
+];
+
+const COLUMN_WIDTHS_KEY = "options-analyzer:column-widths";
+const MIN_COLUMN_WIDTH = 40;
+
+function useColumnWidths() {
+  const [widths, setWidths] = useState(() => {
+    const fallback = COLUMNS.map((c) => c.width);
+    try {
+      const stored = JSON.parse(localStorage.getItem(COLUMN_WIDTHS_KEY));
+      return Array.isArray(stored) && stored.length === COLUMNS.length ? stored : fallback;
+    } catch {
+      return fallback;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(widths));
+  }, [widths]);
+
+  const [activeIndex, setActiveIndex] = useState(null);
+
+  const startResize = (index, e) => {
+    e.preventDefault();
+    setActiveIndex(index);
+    const startX = e.clientX;
+    const startWidth = widths[index];
+    const onMove = (ev) => {
+      const next = Math.max(MIN_COLUMN_WIDTH, startWidth + ev.clientX - startX);
+      setWidths((prev) => prev.map((w, i) => (i === index ? next : w)));
+    };
+    const onUp = () => {
+      setActiveIndex(null);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  return { widths, startResize, activeIndex };
+}
+
+// ---------- shell ----------
+
+// Copied constant, not fetched — there is no shared backend (spec §04b).
+const MODULES = [
+  { name: "Options Analyzer", url: "https://options-analyzer-production-24d8.up.railway.app/", current: true },
+  { name: "Earnings Tracker", url: "https://earnings-tracker-production-2c77.up.railway.app/#/" },
+  { name: "Custom Indexer", url: "https://indexer-production-83a6.up.railway.app/#/" },
+  { name: "Stock Screener", url: "https://parabolic-screener-production.up.railway.app/" },
+  { name: "Stock Dashboard", url: "https://stock-dashboard-server-production-6c1c.up.railway.app/" },
+  { name: "PEAD", url: "https://pead-watchlist-e1a53.up.railway.app/" },
+  { name: "AI Screener", url: "https://nc-futures-screener-server-production.up.railway.app/" },
+];
+
+const CURRENT_MODULE = MODULES.find((m) => m.current);
+
+function TopBar() {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <header className="topbar">
+      <span className="topbar__brand">
+        <img src="/logo.svg" alt="NC Futures" />
+      </span>
+      <div className="topbar__modules" ref={wrapRef}>
+        <button
+          className="btn topbar__modules-trigger"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {CURRENT_MODULE.name} ▾
+        </button>
+        <div className="topbar__modules-menu blueprint blueprint--solid" role="menu" hidden={!open}>
+          {MODULES.map((m) =>
+            m.current ? (
+              <span key={m.name} className="topbar__modules-item" role="menuitem" aria-current="page">
+                {m.name}
+              </span>
+            ) : (
+              <a
+                key={m.name}
+                className="topbar__modules-item"
+                role="menuitem"
+                target="_blank"
+                rel="noopener"
+                href={m.url}
+              >
+                {m.name}
+              </a>
+            )
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}
+
 // ---------- main ----------
 
 export default function OptionsPositionAnalyzer() {
@@ -248,6 +375,7 @@ export default function OptionsPositionAnalyzer() {
   const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef(null);
+  const { widths: columnWidths, startResize, activeIndex: activeColumn } = useColumnWidths();
 
   const mergeRows = (prev, incoming) => {
     if (incoming.length === 0) return prev;
@@ -348,12 +476,25 @@ export default function OptionsPositionAnalyzer() {
   const hasData = rawRows.length > 0;
 
   return (
-    <div className="content">
+    <>
+      <TopBar />
+      <div className="content">
       <div className="app-header">
         <div>
-          <p className="label" style={{ marginBottom: 4 }}>Options position analyzer</p>
           <h1 className="app-ticker">
-            {ticker} {stockPrice != null && <span className="app-spot">· {stockPrice.toLocaleString()}</span>}
+            {ticker === "—" ? (
+              ticker
+            ) : (
+              <a
+                className="symbol"
+                href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${ticker.toLowerCase()}`}
+                target="_blank"
+                rel="noopener"
+              >
+                {ticker}
+              </a>
+            )}{" "}
+            {stockPrice != null && <span className="app-spot">· {stockPrice.toLocaleString()}</span>}
           </h1>
         </div>
         {hasData && (
@@ -427,9 +568,27 @@ export default function OptionsPositionAnalyzer() {
 
           <Blueprint>
             <p className="label">Position detail</p>
-            <table className="table">
+            <table
+              className="table"
+              style={{ tableLayout: "fixed", width: `max(100%, ${columnWidths.reduce((a, b) => a + b, 0)}px)` }}
+            >
+              <colgroup>
+                {columnWidths.map((w, i) => (
+                  <col key={COLUMNS[i].key} style={{ width: `${w}px` }} />
+                ))}
+              </colgroup>
               <thead>
-                <tr><th>Strike</th><th className="text">Type</th><th>Qty</th><th>Last</th><th>Intrinsic</th><th>Extrinsic</th><th>Total extrinsic</th></tr>
+                <tr>
+                  {COLUMNS.map((c, i) => (
+                    <th key={c.key} className={`is-resizable${c.key === "type" ? " text" : ""}`}>
+                      {c.label}
+                      <span
+                        className={`resize-handle${activeColumn === i ? " resize-handle--active" : ""}`}
+                        onMouseDown={(e) => startResize(i, e)}
+                      />
+                    </th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
                 {legRows.map((r, i) => (
@@ -460,6 +619,7 @@ export default function OptionsPositionAnalyzer() {
           </Blueprint>
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }
