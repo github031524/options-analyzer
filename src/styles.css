@@ -592,23 +592,12 @@ textarea.input {
 
 /* 13 · OPTIONS POSITION ANALYZER — APP-SPECIFIC ========================== */
 
-.app-header {
+/* Panel header row — section label on the left, its action on the right. */
+.panel-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: var(--space-6);
-}
-
-.app-ticker {
-  font-size: 26px;
-  text-transform: uppercase;
-  margin: 0;
-}
-
-.app-spot {
-  color: var(--color-accent-800);
-  font-weight: 500;
-  text-transform: none;
+  gap: var(--space-3);
 }
 
 .app-error {
@@ -636,32 +625,24 @@ textarea.input {
   cursor: pointer;
 }
 
-.dropzone--compact { padding: 12px 20px; }
-
 .dropzone--active {
   border-color: var(--color-accent-500);
   background: var(--color-accent-100);
 }
 
-.dropzone__loading,
-.dropzone__add {
+/* Drag-over feedback for the chart panel, which doubles as the drop target
+   once results are on screen. */
+.blueprint--drop {
+  border-color: var(--color-accent-500);
+  background: var(--color-accent-100);
+}
+
+.dropzone__loading {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-}
-
-.dropzone__loading {
   font-size: 13px;
-  color: var(--color-accent-800);
-}
-
-.dropzone__add {
-  font-family: var(--font-heading);
-  font-weight: 600;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: var(--track-label);
   color: var(--color-accent-800);
 }
 
