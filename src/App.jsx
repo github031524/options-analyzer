@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, Fragment } from "react";
-import { Upload, Loader2, Trash2, Plus } from "lucide-react";
+import { Upload, Loader2, Plus } from "lucide-react";
 
 const ACCENT = "#5980a6";
 const ACCENT_TINT = "#dbe4ee";
@@ -248,8 +248,8 @@ function StepChart({ curve, ticker }) {
 
 // ---------- blueprint frame ----------
 
-function Blueprint({ children, className = "" }) {
-  return <div className={`blueprint ${className}`}>{children}</div>;
+function Blueprint({ children, className = "", ...rest }) {
+  return <div className={`blueprint ${className}`} {...rest}>{children}</div>;
 }
 
 // ---------- resizable table columns (spec §08a) ----------
@@ -486,67 +486,59 @@ export default function OptionsPositionAnalyzer() {
   const grandTotal = putsTotal + callsTotal;
 
   const hasData = rawRows.length > 0;
+  const showResults = hasData && legRows.length > 0 && stockPrice != null;
 
   return (
     <>
       <TopBar />
       <div className="content">
-      <div className="app-header">
-        <div>
-          <h1 className="app-ticker">
-            {ticker === "—" ? (
-              ticker
-            ) : (
-              <a
-                className="symbol"
-                href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${ticker.toLowerCase()}`}
-                target="_blank"
-                rel="noopener"
-              >
-                {ticker}
-              </a>
-            )}{" "}
-            {stockPrice != null && <span className="app-spot">· {stockPrice.toLocaleString()}</span>}
-          </h1>
-        </div>
-        {hasData && (
-          <button className="btn" onClick={() => setRawRows([])}>
-            <Trash2 size={13} /> Clear all
-          </button>
-        )}
-      </div>
-
       <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={onSelect} />
 
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={onDrop}
-        onClick={() => inputRef.current.click()}
-        className={`dropzone ${dragOver ? "dropzone--active" : ""} ${hasData ? "dropzone--compact" : ""}`}
-      >
-        {loading ? (
-          <div className="dropzone__loading">
-            <Loader2 size={16} className="spin" /> Reading screenshot…
-          </div>
-        ) : hasData ? (
-          <div className="dropzone__add">
-            <Plus size={14} /> Add another screenshot
-          </div>
-        ) : (
-          <div>
-            <Upload size={22} className="dropzone__icon" />
-            <p className="dropzone__title">Drop, paste (Ctrl/Cmd+V), or click to add an IBKR position screenshot</p>
-            <p className="dropzone__subtitle">Include the column headers for best accuracy</p>
-          </div>
-        )}
-      </div>
+      {/* Once results are on screen the chart panel becomes the drop target, so
+          the standalone dropzone is only needed when there's nothing to show —
+          including the case where rows loaded but weren't usable. */}
+      {!showResults && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          onClick={() => inputRef.current.click()}
+          className={`dropzone ${dragOver ? "dropzone--active" : ""}`}
+        >
+          {loading ? (
+            <div className="dropzone__loading">
+              <Loader2 size={16} className="spin" /> Reading screenshot…
+            </div>
+          ) : (
+            <div>
+              <Upload size={22} className="dropzone__icon" />
+              <p className="dropzone__title">Drop, paste (Ctrl/Cmd+V), or click to add an IBKR position screenshot</p>
+              <p className="dropzone__subtitle">Include the column headers for best accuracy</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="app-error">{error}</p>}
 
-      {hasData && legRows.length > 0 && stockPrice != null && (
+      {showResults && (
         <>
           <div className="grid grid--kpi app-kpis">
+            <Blueprint>
+              <div className="kpi">
+                <p className="kpi__label">
+                  <a
+                    className="symbol"
+                    href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${ticker.toLowerCase()}`}
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    {ticker}
+                  </a>
+                </p>
+                <p className="kpi__figure">{stockPrice.toLocaleString()}</p>
+              </div>
+            </Blueprint>
             <Blueprint>
               <div className="kpi">
                 <p className="kpi__label">Net position at spot</p>
@@ -573,8 +565,22 @@ export default function OptionsPositionAnalyzer() {
             </Blueprint>
           </div>
 
-          <Blueprint>
-            <p className="label">Net position vs underlying price</p>
+          <Blueprint
+            className={dragOver ? "blueprint--drop" : ""}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+          >
+            <div className="panel-head">
+              <p className="label">Net position vs underlying price</p>
+              <button type="button" className="btn btn-ghost" onClick={() => inputRef.current.click()}>
+                {loading ? (
+                  <><Loader2 size={12} className="spin" /> Reading…</>
+                ) : (
+                  <><Plus size={12} /> Add screenshot</>
+                )}
+              </button>
+            </div>
             <StepChart curve={curve} ticker={ticker} />
           </Blueprint>
 
