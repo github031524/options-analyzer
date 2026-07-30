@@ -265,7 +265,21 @@ const COLUMNS = [
 ];
 
 const COLUMN_WIDTHS_KEY = "options-analyzer:column-widths";
+const ROWS_KEY = "options-analyzer:rows";
 const MIN_COLUMN_WIDTH = 40;
+
+// Restore the last extracted position so a reload doesn't mean re-dropping the
+// screenshot. Anything unreadable or not in the expected shape is discarded
+// rather than fed into the math downstream.
+function loadStoredRows() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(ROWS_KEY));
+    if (!Array.isArray(stored)) return [];
+    return stored.filter((r) => r && typeof r.description === "string");
+  } catch {
+    return [];
+  }
+}
 
 function useColumnWidths() {
   const [widths, setWidths] = useState(() => {
@@ -382,7 +396,7 @@ function TopBar() {
 // ---------- main ----------
 
 export default function OptionsPositionAnalyzer() {
-  const [rawRows, setRawRows] = useState([]);
+  const [rawRows, setRawRows] = useState(loadStoredRows);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -450,6 +464,14 @@ export default function OptionsPositionAnalyzer() {
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
   }, [onPaste]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ROWS_KEY, JSON.stringify(rawRows));
+    } catch {
+      /* storage full or unavailable (private mode) — persistence is a nicety */
+    }
+  }, [rawRows]);
 
   const underlyingRow = rawRows.find((r) => !parseLeg(r.description));
   const stockPrice = underlyingRow ? Number(underlyingRow.last) : null;
