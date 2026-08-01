@@ -85,7 +85,7 @@
   --space-8: 27.2px;
 
   /* Table density — compact by default across the platform */
-  --table-cell-py: 5px;
+  --table-cell-py: 4px;
   --table-cell-px: 10px;
 
   /* Layout */
