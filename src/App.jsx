@@ -608,7 +608,6 @@ export default function OptionsPositionAnalyzer() {
             onDrop={onDrop}
           >
             <div className="panel-head">
-              <p className="label">Net position vs underlying price</p>
               <button type="button" className="btn btn-ghost" onClick={() => inputRef.current.click()}>
                 {loading ? (
                   <><Loader2 size={12} className="spin" /> Reading…</>
@@ -621,7 +620,6 @@ export default function OptionsPositionAnalyzer() {
           </Blueprint>
 
           <Blueprint>
-            <p className="label">Position detail</p>
             <table
               className="table"
               style={{ tableLayout: "fixed", width: `max(100%, ${columnWidths.reduce((a, b) => a + b, 0)}px)` }}
