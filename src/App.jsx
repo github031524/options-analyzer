@@ -241,6 +241,20 @@ function StepChart({ curve, ticker }) {
       {strikes.map((k) => (
         <text key={k} x={xScale(k)} y={H - mB + 18} textAnchor="middle" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{k}</text>
       ))}
+      {/* Net position value for each step, centered above its own segment. */}
+      {segments.map((s, i) => (
+        <text
+          key={`v${i}`}
+          x={(xScale(s.x0) + xScale(s.x1)) / 2}
+          y={yScale(s.y) - 6}
+          textAnchor="middle"
+          fontSize="10.5"
+          fill={ACCENT_TEXT}
+          fontFamily="Inter, sans-serif"
+        >
+          {fmtMoney(s.y)}
+        </text>
+      ))}
       {tip}
     </svg>
   );
