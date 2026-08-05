@@ -146,7 +146,10 @@ function StepChart({ curve, ticker }) {
   if (!curve) return null;
   const { segments, domainMin, domainMax, strikes } = curve;
   const W = 1500, H = 230;
-  const mL = 60, mR = 20, mT = 16, mB = 32;
+  // Bottom margin carries the strike labels plus a band under the plot floor
+  // for negative steps' value labels, which sit below their own step.
+  const mL = 60, mR = 20, mT = 16, mB = 46;
+  const strikeLabelY = H - mB + 32;
   const plotW = W - mL - mR;
   const plotH = H - mT - mB;
 
@@ -239,14 +242,14 @@ function StepChart({ curve, ticker }) {
         <text x={mL - 10} y={yScale(yMin) + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(yMin)}</text>
       )}
       {strikes.map((k) => (
-        <text key={k} x={xScale(k)} y={H - mB + 18} textAnchor="middle" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{k}</text>
+        <text key={k} x={xScale(k)} y={strikeLabelY} textAnchor="middle" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{k}</text>
       ))}
       {/* Net position value for each step, centered above its own segment. */}
       {segments.map((s, i) => (
         <text
           key={`v${i}`}
           x={(xScale(s.x0) + xScale(s.x1)) / 2}
-          y={yScale(s.y) - 6}
+          y={s.y < 0 ? yScale(s.y) + 15 : yScale(s.y) - 6}
           textAnchor="middle"
           fontSize="10.5"
           fill={ACCENT_TEXT}
