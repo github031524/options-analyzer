@@ -4,6 +4,7 @@ import { Upload, Loader2, Plus } from "lucide-react";
 const ACCENT = "#5980a6";
 const ACCENT_TINT = "#dbe4ee";
 const ACCENT_TEXT = "#32485e";
+const ACCENT_900 = "#253544";
 const HAIRLINE = "#c9cacc";
 const LOSS = "#a6595e";
 
@@ -240,7 +241,7 @@ function niceCeil(value) {
 
 // ---------- chart ----------
 
-function StepChart({ curve, ticker, neutralPrice }) {
+function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
   const svgRef = useRef(null);
   const [hover, setHover] = useState(null);
 
@@ -372,6 +373,14 @@ function StepChart({ curve, ticker, neutralPrice }) {
             {`Δ0 ${neutralPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
           </text>
         </g>
+      )}
+      {/* Current spot, sitting on the step at its net position — drawn after the
+          Δ0 marker so it stays legible on top when the two nearly coincide. */}
+      {spotPrice != null && spotNet != null && spotPrice >= domainMin && spotPrice <= domainMax && (
+        <circle
+          cx={xScale(spotPrice)} cy={yScale(spotNet)} r="4.5"
+          fill={ACCENT_900} stroke="#fff" strokeWidth="1.5" pointerEvents="none"
+        />
       )}
       {tip}
     </svg>
@@ -745,7 +754,13 @@ export default function OptionsPositionAnalyzer() {
                 )}
               </button>
             </div>
-            <StepChart curve={curve} ticker={ticker} neutralPrice={neutralPrice} />
+            <StepChart
+              curve={curve}
+              ticker={ticker}
+              neutralPrice={neutralPrice}
+              spotPrice={stockPrice}
+              spotNet={netAtSpot}
+            />
           </Blueprint>
 
           <Blueprint>
