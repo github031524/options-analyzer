@@ -652,6 +652,15 @@ export default function OptionsPositionAnalyzer() {
   const hasData = rawRows.length > 0;
   const showResults = hasData && legRows.length > 0 && stockPrice != null;
 
+  // Rows came back but nothing can be drawn from them. Say which half is
+  // missing rather than falling back to an empty dropzone with no explanation.
+  const loadIssue =
+    !hasData || showResults
+      ? null
+      : stockPrice == null
+        ? "Read the screenshot, but couldn't find the underlying row — the ticker and price line above the options (e.g. \"NQ Sep18'26 @CME\"). Its price is what every strike is measured against. Check nothing is covering it (a cursor, a tooltip, a ticker-entry box) and drop it again."
+        : "Read the screenshot, but found no option rows with a position. Check the Position column is visible and the held rows aren't cut off.";
+
   return (
     <>
       <TopBar />
@@ -683,7 +692,7 @@ export default function OptionsPositionAnalyzer() {
         </div>
       )}
 
-      {error && <p className="app-error">{error}</p>}
+      {error ? <p className="app-error">{error}</p> : loadIssue && <p className="app-error">{loadIssue}</p>}
 
       {showResults && (
         <>
