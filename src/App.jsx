@@ -33,6 +33,16 @@ async function extractRows(base64, mediaType) {
 
 // ---------- parsing & math ----------
 
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+
+// IBKR writes the expiry inline in the description, e.g. "Jul20'26".
+function parseExpiry(description) {
+  const m = (description || "").match(/([A-Za-z]{3})(\d{1,2})'(\d{2})/);
+  const month = m && MONTHS[m[1].toLowerCase()];
+  if (month == null) return null;
+  return Date.UTC(2000 + Number(m[3]), month, Number(m[2]), 20, 0, 0);
+}
+
 function parseLeg(description) {
   const match = (description || "").match(/(\d+(?:\.\d+)?)\s*(PUT|CALL)/i);
   if (!match) return null;
@@ -40,7 +50,98 @@ function parseLeg(description) {
     ticker: description.trim().split(/\s+/)[0],
     strike: parseFloat(match[1]),
     type: match[2].toUpperCase(),
+    expiry: parseExpiry(description),
   };
+}
+
+// ---------- delta-neutral estimate ----------
+//
+// The step curve is the at-expiry picture: every option is fully assigned or
+// fully worthless, so it jumps across zero rather than landing on it. The price
+// where the position is ACTUALLY flat needs real deltas, which need time to
+// expiry (parsed above) and vol (backed out of each leg's own mid price below).
+//
+// Black-76 throughout — these are mostly options on futures. Rates are taken as
+// zero: the discount factor scales every leg's delta equally, so it cannot move
+// the root, and for equities this just means carry is ignored.
+
+function normCdf(x) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989422804014327 * Math.exp((-x * x) / 2);
+  const p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return x >= 0 ? 1 - p : p;
+}
+
+function black76Price(type, F, K, T, sigma) {
+  if (!(T > 0) || !(sigma > 0)) return type === "CALL" ? Math.max(F - K, 0) : Math.max(K - F, 0);
+  const sqrtT = Math.sqrt(T);
+  const d1 = (Math.log(F / K) + ((sigma * sigma) / 2) * T) / (sigma * sqrtT);
+  const d2 = d1 - sigma * sqrtT;
+  return type === "CALL"
+    ? F * normCdf(d1) - K * normCdf(d2)
+    : K * normCdf(-d2) - F * normCdf(-d1);
+}
+
+function black76Delta(type, F, K, T, sigma) {
+  // With no time value left the delta is the step itself — which is exactly
+  // what a leg quoted at or below intrinsic is telling us.
+  if (!(T > 0) || !(sigma > 0)) {
+    if (type === "CALL") return F > K ? 1 : 0;
+    return F < K ? -1 : 0;
+  }
+  const d1 = (Math.log(F / K) + ((sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T));
+  return type === "CALL" ? normCdf(d1) : normCdf(d1) - 1;
+}
+
+// Bisection: the model price rises monotonically with vol, so this always
+// converges when the quote carries any time value at all.
+function impliedVol(type, F, K, T, price) {
+  if (!(price > 0) || !(T > 0)) return null;
+  const intrinsic = type === "CALL" ? Math.max(F - K, 0) : Math.max(K - F, 0);
+  if (price <= intrinsic) return null;
+  let lo = 1e-4, hi = 5;
+  if (black76Price(type, F, K, T, hi) < price) return null;
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    if (black76Price(type, F, K, T, mid) < price) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+// Price at which the delta-weighted position nets to zero. Each leg's vol is
+// backed out once at the current spot and then held fixed while the price is
+// varied (the standard sticky-vol assumption) — so this is a snapshot, and it
+// drifts toward the step curve's crossing as expiry approaches.
+function deltaNeutralPrice(legs, baselineShift, sharesPerContract, spot) {
+  if (!(spot > 0) || legs.length === 0) return null;
+  const now = Date.now();
+  const priced = legs.map((leg) => {
+    const T = leg.expiry != null ? (leg.expiry - now) / (365.25 * 24 * 3600 * 1000) : 0;
+    return { ...leg, T, iv: impliedVol(leg.type, spot, leg.strike, T, leg.last) };
+  });
+  // Every leg expired (or none dated) means the step curve already is the answer.
+  if (priced.every((l) => !(l.T > 0) || l.iv == null)) return null;
+
+  const netDelta = (F) =>
+    baselineShift +
+    priced.reduce((sum, l) => sum + l.position * black76Delta(l.type, F, l.strike, l.T, l.iv) * sharesPerContract, 0);
+
+  const strikes = legs.map((l) => l.strike);
+  let lo = Math.min(...strikes) * 0.5;
+  let hi = Math.max(...strikes) * 1.5;
+  let fLo = netDelta(lo), fHi = netDelta(hi);
+  if (fLo === 0) return lo;
+  if (fHi === 0) return hi;
+  if (fLo > 0 === fHi > 0) return null; // no crossing in range
+
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    const fMid = netDelta(mid);
+    if (fMid === 0) return mid;
+    if (fLo > 0 === fMid > 0) { lo = mid; fLo = fMid; } else { hi = mid; fHi = fMid; }
+  }
+  return (lo + hi) / 2;
 }
 
 // Last-trade prints go stale fast on thin option strikes; prefer the live
@@ -139,7 +240,7 @@ function niceCeil(value) {
 
 // ---------- chart ----------
 
-function StepChart({ curve, ticker }) {
+function StepChart({ curve, ticker, neutralPrice }) {
   const svgRef = useRef(null);
   const [hover, setHover] = useState(null);
 
@@ -258,6 +359,20 @@ function StepChart({ curve, ticker }) {
           {fmtMoney(s.y)}
         </text>
       ))}
+      {neutralPrice != null && neutralPrice >= domainMin && neutralPrice <= domainMax && (
+        <g pointerEvents="none">
+          <line
+            x1={xScale(neutralPrice)} y1={mT} x2={xScale(neutralPrice)} y2={H - mB}
+            stroke={ACCENT} strokeWidth="1.25" strokeDasharray="4 3"
+          />
+          <text
+            x={xScale(neutralPrice)} y={mT - 4}
+            textAnchor="middle" fontSize="10.5" fill={ACCENT} fontFamily="Inter, sans-serif"
+          >
+            {`Δ0 ${neutralPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+          </text>
+        </g>
+      )}
       {tip}
     </svg>
   );
@@ -519,6 +634,7 @@ export default function OptionsPositionAnalyzer() {
 
   const curve = stockPrice != null && legRows.length > 0 ? buildCurve(legRows, baselineShift, sharesPerContract) : null;
   const netAtSpot = stockPrice != null ? netPositionAt(legRows, baselineShift, stockPrice, sharesPerContract) : null;
+  const neutralPrice = stockPrice != null ? deltaNeutralPrice(legRows, baselineShift, sharesPerContract, stockPrice) : null;
 
   const putsTotal = legRows.filter((r) => r.type === "PUT").reduce((s, r) => s + r.totalExtrinsic, 0);
   const callsTotal = legRows.filter((r) => r.type === "CALL").reduce((s, r) => s + r.totalExtrinsic, 0);
@@ -584,6 +700,16 @@ export default function OptionsPositionAnalyzer() {
                 <p className={`kpi__figure ${signClass(netAtSpot)}`}>{fmtMoney(netAtSpot)}</p>
               </div>
             </Blueprint>
+            {neutralPrice != null && (
+              <Blueprint>
+                <div className="kpi">
+                  <p className="kpi__label">Delta neutral</p>
+                  <p className="kpi__figure">
+                    {neutralPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </Blueprint>
+            )}
             <Blueprint>
               <div className="kpi">
                 <p className={`kpi__label ${signClass(putsTotal)}`}>Puts total extrinsic</p>
@@ -619,7 +745,7 @@ export default function OptionsPositionAnalyzer() {
                 )}
               </button>
             </div>
-            <StepChart curve={curve} ticker={ticker} />
+            <StepChart curve={curve} ticker={ticker} neutralPrice={neutralPrice} />
           </Blueprint>
 
           <Blueprint>
