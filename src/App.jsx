@@ -544,13 +544,10 @@ export default function OptionsPositionAnalyzer() {
   const inputRef = useRef(null);
   const { widths: columnWidths, startResize, activeIndex: activeColumn } = useColumnWidths();
 
+  // Only used to combine several images dropped together — a new drop always
+  // starts from scratch, so rows from an earlier screenshot never linger.
   const mergeRows = (prev, incoming) => {
-    if (incoming.length === 0) return prev;
-    const tickerOf = (r) => r.description.trim().split(/\s+/)[0];
-    const prevTicker = prev.length > 0 ? tickerOf(prev[0]) : null;
-    const nextTicker = tickerOf(incoming[0]);
-    const base = prevTicker && prevTicker !== nextTicker ? [] : prev;
-    const map = new Map(base.map((r) => [r.description, r]));
+    const map = new Map(prev.map((r) => [r.description, r]));
     for (const r of incoming) map.set(r.description, r);
     return Array.from(map.values());
   };
@@ -566,10 +563,16 @@ export default function OptionsPositionAnalyzer() {
     setLoading(true);
     setError("");
     try {
+      let replaced = false;
       for (const file of images) {
         const base64 = await fileToBase64(file);
         const rows = await extractRows(base64, file.type || "image/png");
-        setRawRows((prev) => mergeRows(prev, rows));
+        if (replaced) {
+          setRawRows((prev) => mergeRows(prev, rows));
+        } else {
+          setRawRows(rows);
+          replaced = true;
+        }
       }
     } catch (e) {
       setError("Couldn't read that screenshot — try a clearer crop, or one that includes the column headers.");
