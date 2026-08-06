@@ -24,9 +24,16 @@ async function extractRows(base64, mediaType) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ base64, mediaType }),
   });
-  const data = await response.json();
+  // A failing request doesn't always carry a JSON body — a proxy 413 or 502
+  // sends HTML, and parsing that would mask the status behind a syntax error.
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    /* handled below via the status code */
+  }
   if (!response.ok) {
-    throw new Error(data?.error || "Extraction failed");
+    throw new Error(data?.error || `Server returned ${response.status}`);
   }
   return data;
 }
@@ -577,7 +584,16 @@ export default function OptionsPositionAnalyzer() {
         }
       }
     } catch (e) {
-      setError("Couldn't read that screenshot — try a clearer crop, or one that includes the column headers.");
+      // Only the "model couldn't parse the image" case is actually about crop
+      // quality. Everything else — a bad key, a rate limit, an oversized image —
+      // has a real reason from the server, and hiding it behind crop advice
+      // sends you chasing the wrong problem.
+      const detail = String(e?.message || "").trim();
+      setError(
+        /valid JSON/i.test(detail)
+          ? "Couldn't read that screenshot — try a clearer crop, or one that includes the column headers."
+          : `Couldn't read that screenshot — ${detail || "the request failed."}`
+      );
     } finally {
       setLoading(false);
     }
