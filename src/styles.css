@@ -626,6 +626,14 @@ textarea.input {
   margin-bottom: var(--space-6);
 }
 
+/* One symbol's KPIs + chart + table. Separated so stacked symbols read as
+   distinct blocks rather than one continuous run of panels. */
+.symbol-block + .symbol-block {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: var(--hairline);
+}
+
 /* Grow to share out leftover space so the row fills edge to edge, but never
    shrink below content — shrinking is what forced labels to truncate. */
 .app-kpis > .blueprint {
