@@ -803,11 +803,6 @@ export default function OptionsPositionAnalyzer() {
               <tbody>
                 {legRows.map((r, i) => (
                   <Fragment key={i}>
-                    {r.type !== legRows[i - 1]?.type && (
-                      <tr className="table-section">
-                        <td colSpan={7}>{r.type === "PUT" ? "Puts" : "Calls"}</td>
-                      </tr>
-                    )}
                     <tr className={r.type === "PUT" ? "row-put" : "row-call"}>
                       <td>{r.strike}</td>
                       <td className="text">{r.type}</td>
@@ -817,11 +812,18 @@ export default function OptionsPositionAnalyzer() {
                       <td>{r.extrinsic.toFixed(2)}</td>
                       <td className={signClass(r.totalExtrinsic)}>{fmtMoney(r.totalExtrinsic)}</td>
                     </tr>
+                    {/* Puts subtotal sits with the puts rather than in the footer;
+                        the calls subtotal already falls directly under the calls. */}
+                    {r.type === "PUT" && legRows[i + 1]?.type !== "PUT" && (
+                      <tr className="table-subtotal">
+                        <td colSpan={6} className={signClass(putsTotal)}>Puts total extrinsic</td>
+                        <td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td>
+                      </tr>
+                    )}
                   </Fragment>
                 ))}
               </tbody>
               <tfoot>
-                <tr><td colSpan={6} className={signClass(putsTotal)}>Puts total extrinsic</td><td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td></tr>
                 <tr><td colSpan={6} className={signClass(callsTotal)}>Calls total extrinsic</td><td className={signClass(callsTotal)}>{fmtMoney(callsTotal)}</td></tr>
                 <tr><td colSpan={6} className={signClass(grandTotal)}>Total extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
               </tfoot>
