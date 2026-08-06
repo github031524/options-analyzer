@@ -138,8 +138,15 @@ function deltaNeutralPrice(legs, baselineShift, sharesPerContract, spot) {
   let lo = Math.min(...strikes) * 0.5;
   let hi = Math.max(...strikes) * 1.5;
   let fLo = netDelta(lo), fHi = netDelta(hi);
-  if (fLo === 0) return lo;
-  if (fHi === 0) return hi;
+
+  // Far from the strikes every option delta underflows toward zero, so a
+  // near-zero value at a bracket edge is the tail flattening out, not a
+  // crossing. Without this a position that never actually crosses — short puts
+  // and nothing else, whose net delta stays positive and only decays — would
+  // report the bracket edge itself as its neutral price.
+  const size = legs.reduce((s, l) => s + Math.abs(l.position), 0) * sharesPerContract;
+  const eps = Math.max(size * 1e-4, 1e-9);
+  if (Math.abs(fLo) < eps || Math.abs(fHi) < eps) return null;
   if (fLo > 0 === fHi > 0) return null; // no crossing in range
 
   for (let i = 0; i < 200; i++) {
@@ -149,6 +156,86 @@ function deltaNeutralPrice(legs, baselineShift, sharesPerContract, spot) {
     if (fLo > 0 === fMid > 0) { lo = mid; fLo = fMid; } else { hi = mid; fHi = fMid; }
   }
   return (lo + hi) / 2;
+}
+
+// ---------- per-symbol grouping ----------
+
+// A screenshot can hold several symbols, each with its own underlying row and
+// its own legs. Everything downstream (spot, multiplier, curve, totals) is
+// per-symbol, so split first and compute each group independently — a strike is
+// only meaningful against its own underlying's price.
+function buildSymbolViews(rawRows) {
+  const order = [];
+  const groups = new Map();
+  for (const row of rawRows) {
+    const ticker = String(row.description || "").trim().split(/\s+/)[0] || "—";
+    if (!groups.has(ticker)) {
+      groups.set(ticker, []);
+      order.push(ticker);
+    }
+    groups.get(ticker).push(row);
+  }
+
+  return order.map((ticker) => {
+    const rows = groups.get(ticker);
+    const underlyingRow = rows.find((r) => !parseLeg(r.description));
+    const price = underlyingRow ? Number(underlyingRow.last) : NaN;
+    // A price that won't parse is as unusable as a missing row, and letting NaN
+    // through would render every figure in the section as NaN.
+    const stockPrice = Number.isFinite(price) ? price : null;
+    const baselineShift =
+      underlyingRow && underlyingRow.position !== null && underlyingRow.position !== ""
+        ? Number(underlyingRow.position) || 0
+        : 0;
+    const { dollarMultiplier, sharesPerContract } = contractSpec(ticker);
+
+    const legRows =
+      stockPrice == null
+        ? []
+        : rows
+            .map((r) => {
+              const leg = parseLeg(r.description);
+              if (!leg) return null;
+              const position = Number(r.position);
+              const last = midOrLast(r);
+              if (!Number.isFinite(position) || !Number.isFinite(last)) return null;
+              const intrinsic =
+                leg.type === "PUT" ? Math.max(leg.strike - stockPrice, 0) : Math.max(stockPrice - leg.strike, 0);
+              const extrinsic = last - intrinsic;
+              return {
+                ...leg,
+                position,
+                last,
+                intrinsic,
+                extrinsic,
+                totalExtrinsic: extrinsic * Math.abs(position) * dollarMultiplier,
+              };
+            })
+            .filter(Boolean)
+            .sort((a, b) => (a.type === b.type ? a.strike - b.strike : a.type === "PUT" ? -1 : 1));
+
+    const putsTotal = legRows.filter((r) => r.type === "PUT").reduce((s, r) => s + r.totalExtrinsic, 0);
+    const callsTotal = legRows.filter((r) => r.type === "CALL").reduce((s, r) => s + r.totalExtrinsic, 0);
+    const ready = stockPrice != null && legRows.length > 0;
+
+    return {
+      ticker,
+      stockPrice,
+      legRows,
+      putsTotal,
+      callsTotal,
+      grandTotal: putsTotal + callsTotal,
+      curve: ready ? buildCurve(legRows, baselineShift, sharesPerContract) : null,
+      netAtSpot: ready ? netPositionAt(legRows, baselineShift, stockPrice, sharesPerContract) : null,
+      neutralPrice: ready ? deltaNeutralPrice(legRows, baselineShift, sharesPerContract, stockPrice) : null,
+      ready,
+      issue: ready
+        ? null
+        : stockPrice == null
+          ? `${ticker}: couldn't read the underlying row — the ticker and price line above the options (e.g. "NQ Sep18'26 @CME"). Its price is what every strike is measured against; check nothing is covering it.`
+          : `${ticker}: no option rows with a position.`,
+    };
+  });
 }
 
 // Last-trade prints go stale fast on thin option strikes; prefer the live
@@ -545,6 +632,134 @@ function TopBar() {
 
 // ---------- main ----------
 
+// One symbol's block: its KPI row, its chart, its table. The chart panel is a
+// drop target like the others, so a screenshot can be dropped anywhere.
+function PositionSection({ view, columnWidths, startResize, activeColumn, dragOver, onDragOver, onDragLeave, onDrop }) {
+  const { ticker, stockPrice, legRows, putsTotal, callsTotal, grandTotal, curve, netAtSpot, neutralPrice } = view;
+
+  return (
+    <section className="symbol-block">
+      <div className="app-kpis">
+        <Blueprint>
+          <div className="kpi">
+            <p className="kpi__label kpi__label--lead">
+              <a
+                className="symbol"
+                href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${ticker.toLowerCase()}`}
+                target="_blank"
+                rel="noopener"
+              >
+                {ticker}
+              </a>
+            </p>
+            <p className="kpi__figure">{stockPrice.toLocaleString()}</p>
+          </div>
+        </Blueprint>
+        <Blueprint>
+          <div className="kpi">
+            <p className="kpi__label">Net position at spot</p>
+            <p className={`kpi__figure ${signClass(netAtSpot)}`}>{fmtMoney(netAtSpot)}</p>
+          </div>
+        </Blueprint>
+        {neutralPrice != null && (
+          <Blueprint>
+            <div className="kpi">
+              <p className="kpi__label">Delta neutral</p>
+              <p className="kpi__figure">{neutralPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+            </div>
+          </Blueprint>
+        )}
+        <Blueprint>
+          <div className="kpi">
+            <p className={`kpi__label ${signClass(putsTotal)}`}>Puts total extrinsic</p>
+            <p className={`kpi__figure ${signClass(putsTotal)}`}>{fmtMoney(putsTotal)}</p>
+          </div>
+        </Blueprint>
+        <Blueprint>
+          <div className="kpi">
+            <p className={`kpi__label ${signClass(callsTotal)}`}>Calls total extrinsic</p>
+            <p className={`kpi__figure ${signClass(callsTotal)}`}>{fmtMoney(callsTotal)}</p>
+          </div>
+        </Blueprint>
+        <Blueprint>
+          <div className="kpi">
+            <p className={`kpi__label ${signClass(grandTotal)}`}>Total extrinsic</p>
+            <p className={`kpi__figure ${signClass(grandTotal)}`}>{fmtMoney(grandTotal)}</p>
+          </div>
+        </Blueprint>
+      </div>
+
+      <Blueprint
+        className={dragOver ? "blueprint--drop" : ""}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        <StepChart
+          curve={curve}
+          ticker={ticker}
+          neutralPrice={neutralPrice}
+          spotPrice={stockPrice}
+          spotNet={netAtSpot}
+        />
+      </Blueprint>
+
+      <Blueprint>
+        <table
+          className="table"
+          style={{ tableLayout: "fixed", width: `max(100%, ${columnWidths.reduce((a, b) => a + b, 0)}px)` }}
+        >
+          <colgroup>
+            {columnWidths.map((w, i) => (
+              <col key={COLUMNS[i].key} style={{ width: `${w}px` }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              {COLUMNS.map((c, i) => (
+                <th key={c.key} className={`is-resizable${c.key === "type" ? " text" : ""}`}>
+                  {c.label}
+                  <span
+                    className={`resize-handle${activeColumn === i ? " resize-handle--active" : ""}`}
+                    onMouseDown={(e) => startResize(i, e)}
+                  />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {legRows.map((r, i) => (
+              <Fragment key={i}>
+                <tr className={r.type === "PUT" ? "row-put" : "row-call"}>
+                  <td>{r.strike}</td>
+                  <td className="text">{r.type}</td>
+                  <td>{r.position}</td>
+                  <td>{r.last.toFixed(2)}</td>
+                  <td>{r.intrinsic.toFixed(2)}</td>
+                  <td>{r.extrinsic.toFixed(2)}</td>
+                  <td className={signClass(r.totalExtrinsic)}>{fmtMoney(r.totalExtrinsic)}</td>
+                </tr>
+                {/* Puts subtotal sits with the puts rather than in the footer;
+                    the calls subtotal already falls directly under the calls. */}
+                {r.type === "PUT" && legRows[i + 1]?.type !== "PUT" && (
+                  <tr className="table-subtotal">
+                    <td colSpan={6} className={signClass(putsTotal)}>Puts total extrinsic</td>
+                    <td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr><td colSpan={6} className={signClass(callsTotal)}>Calls total extrinsic</td><td className={signClass(callsTotal)}>{fmtMoney(callsTotal)}</td></tr>
+            <tr><td colSpan={6} className={signClass(grandTotal)}>Total extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
+          </tfoot>
+        </table>
+      </Blueprint>
+    </section>
+  );
+}
+
 export default function OptionsPositionAnalyzer() {
   const [rawRows, setRawRows] = useState(loadStoredRows);
   const [loading, setLoading] = useState(false);
@@ -635,52 +850,16 @@ export default function OptionsPositionAnalyzer() {
     }
   }, [rawRows]);
 
-  const underlyingRow = rawRows.find((r) => !parseLeg(r.description));
-  const stockPrice = underlyingRow ? Number(underlyingRow.last) : null;
-  const baselineShift =
-    underlyingRow && underlyingRow.position !== null && underlyingRow.position !== ""
-      ? Number(underlyingRow.position)
-      : 0;
-
-  const ticker = underlyingRow
-    ? underlyingRow.description.trim().split(/\s+/)[0]
-    : rawRows.find((r) => parseLeg(r.description))?.description.trim().split(/\s+/)[0] || "—";
-
-  const { dollarMultiplier, sharesPerContract } = contractSpec(ticker);
-
-  const legRows = rawRows
-    .map((r) => {
-      const leg = parseLeg(r.description);
-      if (!leg || stockPrice == null) return null;
-      const position = Number(r.position);
-      const last = midOrLast(r);
-      const intrinsic = leg.type === "PUT" ? Math.max(leg.strike - stockPrice, 0) : Math.max(stockPrice - leg.strike, 0);
-      const extrinsic = last - intrinsic;
-      const totalExtrinsic = extrinsic * Math.abs(position) * dollarMultiplier;
-      return { ...leg, position, last, intrinsic, extrinsic, totalExtrinsic };
-    })
-    .filter(Boolean)
-    .sort((a, b) => (a.type === b.type ? a.strike - b.strike : a.type === "PUT" ? -1 : 1));
-
-  const curve = stockPrice != null && legRows.length > 0 ? buildCurve(legRows, baselineShift, sharesPerContract) : null;
-  const netAtSpot = stockPrice != null ? netPositionAt(legRows, baselineShift, stockPrice, sharesPerContract) : null;
-  const neutralPrice = stockPrice != null ? deltaNeutralPrice(legRows, baselineShift, sharesPerContract, stockPrice) : null;
-
-  const putsTotal = legRows.filter((r) => r.type === "PUT").reduce((s, r) => s + r.totalExtrinsic, 0);
-  const callsTotal = legRows.filter((r) => r.type === "CALL").reduce((s, r) => s + r.totalExtrinsic, 0);
-  const grandTotal = putsTotal + callsTotal;
+  const symbolViews = buildSymbolViews(rawRows);
+  const readyViews = symbolViews.filter((v) => v.ready);
 
   const hasData = rawRows.length > 0;
-  const showResults = hasData && legRows.length > 0 && stockPrice != null;
+  const showResults = readyViews.length > 0;
 
-  // Rows came back but nothing can be drawn from them. Say which half is
-  // missing rather than falling back to an empty dropzone with no explanation.
-  const loadIssue =
-    !hasData || showResults
-      ? null
-      : stockPrice == null
-        ? "Read the screenshot, but couldn't find the underlying row — the ticker and price line above the options (e.g. \"NQ Sep18'26 @CME\"). Its price is what every strike is measured against. Check nothing is covering it (a cursor, a tooltip, a ticker-entry box) and drop it again."
-        : "Read the screenshot, but found no option rows with a position. Check the Position column is visible and the held rows aren't cut off.";
+  // Name every symbol that couldn't be drawn. With one symbol that's the whole
+  // story; with several it flags the odd one out while the rest still render.
+  const skipped = symbolViews.filter((v) => !v.ready).map((v) => v.issue);
+  const loadIssue = !hasData || skipped.length === 0 ? null : `Read the screenshot. ${skipped.join(" ")}`;
 
   return (
     <>
@@ -717,134 +896,31 @@ export default function OptionsPositionAnalyzer() {
 
       {showResults && (
         <>
-          <div className="app-kpis">
-            <Blueprint>
-              <div className="kpi">
-                <p className="kpi__label kpi__label--lead">
-                  <a
-                    className="symbol"
-                    href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${ticker.toLowerCase()}`}
-                    target="_blank"
-                    rel="noopener"
-                  >
-                    {ticker}
-                  </a>
-                </p>
-                <p className="kpi__figure">{stockPrice.toLocaleString()}</p>
-              </div>
-            </Blueprint>
-            <Blueprint>
-              <div className="kpi">
-                <p className="kpi__label">Net position at spot</p>
-                <p className={`kpi__figure ${signClass(netAtSpot)}`}>{fmtMoney(netAtSpot)}</p>
-              </div>
-            </Blueprint>
-            {neutralPrice != null && (
-              <Blueprint>
-                <div className="kpi">
-                  <p className="kpi__label">Delta neutral</p>
-                  <p className="kpi__figure">
-                    {neutralPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                  </p>
-                </div>
-              </Blueprint>
-            )}
-            <Blueprint>
-              <div className="kpi">
-                <p className={`kpi__label ${signClass(putsTotal)}`}>Puts total extrinsic</p>
-                <p className={`kpi__figure ${signClass(putsTotal)}`}>{fmtMoney(putsTotal)}</p>
-              </div>
-            </Blueprint>
-            <Blueprint>
-              <div className="kpi">
-                <p className={`kpi__label ${signClass(callsTotal)}`}>Calls total extrinsic</p>
-                <p className={`kpi__figure ${signClass(callsTotal)}`}>{fmtMoney(callsTotal)}</p>
-              </div>
-            </Blueprint>
-            <Blueprint>
-              <div className="kpi">
-                <p className={`kpi__label ${signClass(grandTotal)}`}>Total extrinsic</p>
-                <p className={`kpi__figure ${signClass(grandTotal)}`}>{fmtMoney(grandTotal)}</p>
-              </div>
-            </Blueprint>
+          {/* One action for the page rather than one per symbol — with several
+              sections a button in each chart panel just repeats itself. */}
+          <div className="panel-head">
+            <button type="button" className="btn btn-ghost" onClick={() => inputRef.current.click()}>
+              {loading ? (
+                <><Loader2 size={12} className="spin" /> Reading…</>
+              ) : (
+                <><Plus size={12} /> Add screenshot</>
+              )}
+            </button>
           </div>
 
-          <Blueprint
-            className={dragOver ? "blueprint--drop" : ""}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={onDrop}
-          >
-            <div className="panel-head">
-              <button type="button" className="btn btn-ghost" onClick={() => inputRef.current.click()}>
-                {loading ? (
-                  <><Loader2 size={12} className="spin" /> Reading…</>
-                ) : (
-                  <><Plus size={12} /> Add screenshot</>
-                )}
-              </button>
-            </div>
-            <StepChart
-              curve={curve}
-              ticker={ticker}
-              neutralPrice={neutralPrice}
-              spotPrice={stockPrice}
-              spotNet={netAtSpot}
+          {readyViews.map((view) => (
+            <PositionSection
+              key={view.ticker}
+              view={view}
+              columnWidths={columnWidths}
+              startResize={startResize}
+              activeColumn={activeColumn}
+              dragOver={dragOver}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
             />
-          </Blueprint>
-
-          <Blueprint>
-            <table
-              className="table"
-              style={{ tableLayout: "fixed", width: `max(100%, ${columnWidths.reduce((a, b) => a + b, 0)}px)` }}
-            >
-              <colgroup>
-                {columnWidths.map((w, i) => (
-                  <col key={COLUMNS[i].key} style={{ width: `${w}px` }} />
-                ))}
-              </colgroup>
-              <thead>
-                <tr>
-                  {COLUMNS.map((c, i) => (
-                    <th key={c.key} className={`is-resizable${c.key === "type" ? " text" : ""}`}>
-                      {c.label}
-                      <span
-                        className={`resize-handle${activeColumn === i ? " resize-handle--active" : ""}`}
-                        onMouseDown={(e) => startResize(i, e)}
-                      />
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {legRows.map((r, i) => (
-                  <Fragment key={i}>
-                    <tr className={r.type === "PUT" ? "row-put" : "row-call"}>
-                      <td>{r.strike}</td>
-                      <td className="text">{r.type}</td>
-                      <td>{r.position}</td>
-                      <td>{r.last.toFixed(2)}</td>
-                      <td>{r.intrinsic.toFixed(2)}</td>
-                      <td>{r.extrinsic.toFixed(2)}</td>
-                      <td className={signClass(r.totalExtrinsic)}>{fmtMoney(r.totalExtrinsic)}</td>
-                    </tr>
-                    {/* Puts subtotal sits with the puts rather than in the footer;
-                        the calls subtotal already falls directly under the calls. */}
-                    {r.type === "PUT" && legRows[i + 1]?.type !== "PUT" && (
-                      <tr className="table-subtotal">
-                        <td colSpan={6} className={signClass(putsTotal)}>Puts total extrinsic</td>
-                        <td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr><td colSpan={6} className={signClass(callsTotal)}>Calls total extrinsic</td><td className={signClass(callsTotal)}>{fmtMoney(callsTotal)}</td></tr>
-                <tr><td colSpan={6} className={signClass(grandTotal)}>Total extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
-              </tfoot>
-            </table>
-          </Blueprint>
+          ))}
         </>
       )}
       </div>
