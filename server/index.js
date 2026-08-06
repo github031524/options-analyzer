@@ -42,7 +42,9 @@ app.post("/api/extract", async (req, res) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1000,
+        // A row costs roughly 40 tokens, so 1000 only covered ~25 rows and a
+        // longer position list would silently truncate into invalid JSON.
+        max_tokens: 4000,
         messages: [
           {
             role: "user",
@@ -59,6 +61,14 @@ app.post("/api/extract", async (req, res) => {
 
     if (!response.ok) {
       return res.status(response.status).json({ error: data?.error?.message || "Anthropic API error" });
+    }
+
+    // Truncated output parses as invalid JSON, which would otherwise be
+    // reported as an unreadable screenshot rather than an over-long one.
+    if (data.stop_reason === "max_tokens") {
+      return res.status(502).json({
+        error: "the position list was too long to read in one pass — try a screenshot with fewer rows.",
+      });
     }
 
     const text = (data.content || [])
