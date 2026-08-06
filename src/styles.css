@@ -591,6 +591,12 @@ textarea.input {
 .gain { color: var(--color-gain); font-weight: 700; }
 .loss { color: var(--color-loss); font-weight: 700; }
 
+/* Spot marker on the chart — same gain/loss tokens as the figures above, so
+   the dot and the "net position at spot" tile can never disagree. */
+.spot-dot { fill: var(--color-accent-900); }
+.spot-dot--gain { fill: var(--color-gain); }
+.spot-dot--loss { fill: var(--color-loss); }
+
 /* .table td/.table tfoot td set their own font-weight at higher specificity
    (class+type / class+2 types) -- this beats both so gain/loss stay bold there. */
 .table td.gain,
