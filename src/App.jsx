@@ -4,7 +4,6 @@ import { Upload, Loader2, Plus } from "lucide-react";
 const ACCENT = "#5980a6";
 const ACCENT_TINT = "#dbe4ee";
 const ACCENT_TEXT = "#32485e";
-const ACCENT_900 = "#253544";
 const HAIRLINE = "#c9cacc";
 const LOSS = "#a6595e";
 
@@ -375,11 +374,14 @@ function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
         </g>
       )}
       {/* Current spot, sitting on the step at its net position — drawn after the
-          Δ0 marker so it stays legible on top when the two nearly coincide. */}
+          Δ0 marker so it stays legible on top when the two nearly coincide.
+          Filled from the gain/loss tokens via CSS so it always matches the
+          "net position at spot" tile rather than drifting from it. */}
       {spotPrice != null && spotNet != null && spotPrice >= domainMin && spotPrice <= domainMax && (
         <circle
-          cx={xScale(spotPrice)} cy={yScale(spotNet)} r="4.5"
-          fill={ACCENT_900} stroke="#fff" strokeWidth="1.5" pointerEvents="none"
+          className={`spot-dot ${spotNet > 0 ? "spot-dot--gain" : spotNet < 0 ? "spot-dot--loss" : ""}`}
+          cx={xScale(spotPrice)} cy={yScale(spotNet)} r="7"
+          stroke="#fff" strokeWidth="2" pointerEvents="none"
         />
       )}
       {tip}
