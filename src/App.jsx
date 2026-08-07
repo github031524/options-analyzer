@@ -661,14 +661,6 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, dragOv
             <p className={`kpi__figure ${signClass(netAtSpot)}`}>{fmtMoney(netAtSpot)}</p>
           </div>
         </Blueprint>
-        {neutralPrice != null && (
-          <Blueprint>
-            <div className="kpi">
-              <p className="kpi__label">Delta neutral</p>
-              <p className="kpi__figure">{neutralPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-            </div>
-          </Blueprint>
-        )}
         <Blueprint>
           <div className="kpi">
             <p className={`kpi__label ${signClass(putsTotal)}`}>Puts total extrinsic</p>
