@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, Fragment } from "react";
-import { Upload, Loader2, Plus } from "lucide-react";
+import { Upload, Loader2 } from "lucide-react";
 
 const ACCENT = "#5980a6";
 const ACCENT_TINT = "#dbe4ee";
@@ -890,15 +890,14 @@ export default function OptionsPositionAnalyzer() {
         <>
           {/* One action for the page rather than one per symbol — with several
               sections a button in each chart panel just repeats itself. */}
-          <div className="panel-head">
-            <button type="button" className="btn btn-ghost" onClick={() => inputRef.current.click()}>
-              {loading ? (
-                <><Loader2 size={12} className="spin" /> Reading…</>
-              ) : (
-                <><Plus size={12} /> Add screenshot</>
-              )}
-            </button>
-          </div>
+          {/* No toolbar in the resting state — screenshots come in by drop or
+              paste. The row only appears while a drop is being read, so there's
+              still feedback during the wait without costing a row otherwise. */}
+          {loading && (
+            <div className="panel-head">
+              <span className="dropzone__loading"><Loader2 size={12} className="spin" /> Reading…</span>
+            </div>
+          )}
 
           {readyViews.map((view) => (
             <PositionSection
