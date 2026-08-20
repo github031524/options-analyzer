@@ -178,15 +178,18 @@ function buildSymbolViews(rawRows) {
 
   return order.map((ticker) => {
     const rows = groups.get(ticker);
-    const underlyingRow = rows.find((r) => !parseLeg(r.description));
-    const price = underlyingRow ? Number(underlyingRow.last) : NaN;
+    // A symbol can hold several outright contracts at once (e.g. GC Oct26 and
+    // GC Dec26). They all count toward the net underlying position, so sum every
+    // one of them — taking only the first would silently drop the rest.
+    const underlyingRows = rows.filter((r) => !parseLeg(r.description));
+    const priceRow = underlyingRows.find((r) => Number.isFinite(Number(r.last)));
     // A price that won't parse is as unusable as a missing row, and letting NaN
     // through would render every figure in the section as NaN.
-    const stockPrice = Number.isFinite(price) ? price : null;
-    const baselineShift =
-      underlyingRow && underlyingRow.position !== null && underlyingRow.position !== ""
-        ? Number(underlyingRow.position) || 0
-        : 0;
+    const stockPrice = priceRow ? Number(priceRow.last) : null;
+    const baselineShift = underlyingRows.reduce((sum, r) => {
+      const qty = r.position === null || r.position === "" ? 0 : Number(r.position);
+      return sum + (Number.isFinite(qty) ? qty : 0);
+    }, 0);
     const { dollarMultiplier, sharesPerContract } = contractSpec(ticker);
 
     const legRows =
