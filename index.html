@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Options Position Analyzer</title>
+    <!-- Fetched in parallel with the app's own CSS. Previously an @import at the
+         top of styles.css, which could only start after that file had been
+         downloaded and parsed — a serialised third-party hop on the critical
+         path. Same family, weights and display=swap, so rendering is unchanged. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+    />
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
