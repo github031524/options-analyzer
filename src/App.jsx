@@ -184,7 +184,7 @@ function buildSymbolViews(rawRows) {
     const priceRow = underlyingRows.find((r) => Number.isFinite(Number(r.last)));
     // A price that won't parse is as unusable as a missing row, and letting NaN
     // through would render every figure in the section as NaN.
-    const stockPrice = priceRow ? Number(priceRow.last) : null;
+    const spotPrice = priceRow ? Number(priceRow.last) : null;
     const baselineShift = underlyingRows.reduce((sum, r) => {
       const qty = r.position === null || r.position === "" ? 0 : Number(r.position);
       return sum + (Number.isFinite(qty) ? qty : 0);
@@ -192,7 +192,7 @@ function buildSymbolViews(rawRows) {
     const { dollarMultiplier, sharesPerContract } = contractSpec(ticker);
 
     const legRows =
-      stockPrice == null
+      spotPrice == null
         ? []
         : rows
             .map((r) => {
@@ -202,7 +202,7 @@ function buildSymbolViews(rawRows) {
               const last = midOrLast(r);
               if (!Number.isFinite(position) || !Number.isFinite(last)) return null;
               const intrinsic =
-                leg.type === "PUT" ? Math.max(leg.strike - stockPrice, 0) : Math.max(stockPrice - leg.strike, 0);
+                leg.type === "PUT" ? Math.max(leg.strike - spotPrice, 0) : Math.max(spotPrice - leg.strike, 0);
               const extrinsic = last - intrinsic;
               return {
                 ...leg,
@@ -218,22 +218,22 @@ function buildSymbolViews(rawRows) {
 
     const putsTotal = legRows.filter((r) => r.type === "PUT").reduce((s, r) => s + r.totalExtrinsic, 0);
     const callsTotal = legRows.filter((r) => r.type === "CALL").reduce((s, r) => s + r.totalExtrinsic, 0);
-    const ready = stockPrice != null && legRows.length > 0;
+    const ready = spotPrice != null && legRows.length > 0;
 
     return {
       ticker,
-      stockPrice,
+      spotPrice,
       legRows,
       putsTotal,
       callsTotal,
       grandTotal: putsTotal + callsTotal,
       curve: ready ? buildCurve(legRows, baselineShift, sharesPerContract) : null,
-      netAtSpot: ready ? netPositionAt(legRows, baselineShift, stockPrice, sharesPerContract) : null,
-      neutralPrice: ready ? deltaNeutralPrice(legRows, baselineShift, sharesPerContract, stockPrice) : null,
+      netAtSpot: ready ? netPositionAt(legRows, baselineShift, spotPrice, sharesPerContract) : null,
+      neutralPrice: ready ? deltaNeutralPrice(legRows, baselineShift, sharesPerContract, spotPrice) : null,
       ready,
       issue: ready
         ? null
-        : stockPrice == null
+        : spotPrice == null
           ? `${ticker}: couldn't read the underlying row — the ticker and price line above the options (e.g. "NQ Sep18'26 @CME"). Its price is what every strike is measured against; check nothing is covering it.`
           : `${ticker}: no option rows with a position.`,
     };
@@ -637,7 +637,7 @@ function TopBar() {
 // One symbol's block: its KPI row, its chart, its table. The chart panel is a
 // drop target like the others, so a screenshot can be dropped anywhere.
 function PositionSection({ view, columnWidths, startResize, activeColumn, dragOver, onDragOver, onDragLeave, onDrop }) {
-  const { ticker, stockPrice, legRows, putsTotal, callsTotal, grandTotal, curve, netAtSpot, neutralPrice } = view;
+  const { ticker, spotPrice, legRows, putsTotal, callsTotal, grandTotal, curve, netAtSpot, neutralPrice } = view;
 
   return (
     <section className="symbol-block">
@@ -654,7 +654,7 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, dragOv
                 {ticker}
               </a>
             </p>
-            <p className="kpi__figure">{stockPrice.toLocaleString()}</p>
+            <p className="kpi__figure">{spotPrice.toLocaleString()}</p>
           </div>
         </Blueprint>
         <Blueprint>
@@ -663,24 +663,19 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, dragOv
             <p className={`kpi__figure ${signClass(netAtSpot)}`}>{fmtMoney(netAtSpot)}</p>
           </div>
         </Blueprint>
-        <Blueprint>
-          <div className="kpi">
-            <p className={`kpi__label ${signClass(putsTotal)}`}>Puts total extrinsic</p>
-            <p className={`kpi__figure ${signClass(putsTotal)}`}>{fmtMoney(putsTotal)}</p>
-          </div>
-        </Blueprint>
-        <Blueprint>
-          <div className="kpi">
-            <p className={`kpi__label ${signClass(callsTotal)}`}>Calls total extrinsic</p>
-            <p className={`kpi__figure ${signClass(callsTotal)}`}>{fmtMoney(callsTotal)}</p>
-          </div>
-        </Blueprint>
-        <Blueprint>
-          <div className="kpi">
-            <p className={`kpi__label ${signClass(grandTotal)}`}>Total extrinsic</p>
-            <p className={`kpi__figure ${signClass(grandTotal)}`}>{fmtMoney(grandTotal)}</p>
-          </div>
-        </Blueprint>
+        {/* The three extrinsic totals differ only in label and value. */}
+        {[
+          ["Puts total extrinsic", putsTotal],
+          ["Calls total extrinsic", callsTotal],
+          ["Total extrinsic", grandTotal],
+        ].map(([label, total]) => (
+          <Blueprint key={label}>
+            <div className="kpi">
+              <p className={`kpi__label ${signClass(total)}`}>{label}</p>
+              <p className={`kpi__figure ${signClass(total)}`}>{fmtMoney(total)}</p>
+            </div>
+          </Blueprint>
+        ))}
       </div>
 
       <Blueprint
@@ -693,7 +688,7 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, dragOv
           curve={curve}
           ticker={ticker}
           neutralPrice={neutralPrice}
-          spotPrice={stockPrice}
+          spotPrice={spotPrice}
           spotNet={netAtSpot}
         />
       </Blueprint>
@@ -754,6 +749,14 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, dragOv
   );
 }
 
+// Only used to combine several images dropped together — a new drop always
+// starts from scratch, so rows from an earlier screenshot never linger.
+function mergeRows(prev, incoming) {
+  const map = new Map(prev.map((r) => [r.description, r]));
+  for (const r of incoming) map.set(r.description, r);
+  return Array.from(map.values());
+}
+
 export default function OptionsPositionAnalyzer() {
   const [rawRows, setRawRows] = useState(loadStoredRows);
   const [loading, setLoading] = useState(false);
@@ -761,14 +764,6 @@ export default function OptionsPositionAnalyzer() {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef(null);
   const { widths: columnWidths, startResize, activeIndex: activeColumn } = useColumnWidths();
-
-  // Only used to combine several images dropped together — a new drop always
-  // starts from scratch, so rows from an earlier screenshot never linger.
-  const mergeRows = (prev, incoming) => {
-    const map = new Map(prev.map((r) => [r.description, r]));
-    for (const r of incoming) map.set(r.description, r);
-    return Array.from(map.values());
-  };
 
   const handleFiles = useCallback(async (files) => {
     const images = files.filter((f) => f.type.startsWith("image/"));
@@ -781,16 +776,12 @@ export default function OptionsPositionAnalyzer() {
     setLoading(true);
     setError("");
     try {
-      let replaced = false;
-      for (const file of images) {
+      // The first image replaces whatever was on screen; any further images in
+      // the same drop merge into it.
+      for (const [i, file] of images.entries()) {
         const base64 = await fileToBase64(file);
         const rows = await extractRows(base64, file.type || "image/png");
-        if (replaced) {
-          setRawRows((prev) => mergeRows(prev, rows));
-        } else {
-          setRawRows(rows);
-          replaced = true;
-        }
+        setRawRows(i === 0 ? rows : (prev) => mergeRows(prev, rows));
       }
     } catch (e) {
       // Only the "model couldn't parse the image" case is actually about crop
