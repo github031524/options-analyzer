@@ -653,7 +653,7 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, dragOv
             <p className="kpi__label kpi__label--lead">
               <a
                 className="symbol"
-                href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${ticker.toLowerCase()}`}
+                href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${encodeURIComponent(ticker.toLowerCase())}`}
                 target="_blank"
                 rel="noopener"
               >
