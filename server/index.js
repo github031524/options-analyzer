@@ -1,4 +1,5 @@
 import "dotenv/config";
+import compression from "compression";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -21,6 +22,8 @@ For each qualifying row, return an object with exactly these fields:
 Respond with ONLY a raw JSON array of these objects. No markdown code fences, no explanation, no text before or after the array.`;
 
 const app = express();
+// The bundle was going out uncompressed even when the client asked for gzip.
+app.use(compression());
 app.use(express.json({ limit: "10mb" }));
 
 app.post("/api/extract", async (req, res) => {
@@ -92,6 +95,15 @@ app.post("/api/extract", async (req, res) => {
 });
 
 const distPath = path.join(__dirname, "..", "dist");
+
+// Vite fingerprints everything under /assets with a content hash, so those URLs
+// can never point at different bytes — they're safe to cache indefinitely.
+// Everything else (index.html, logo.svg) keeps the default revalidate-always
+// behaviour so a new deploy is picked up immediately.
+app.use(
+  "/assets",
+  express.static(path.join(distPath, "assets"), { immutable: true, maxAge: "1y" })
+);
 app.use(express.static(distPath));
 app.get("*", (req, res) => {
   res.sendFile(path.join(distPath, "index.html"));

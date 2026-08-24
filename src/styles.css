@@ -1,6 +1,7 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
-
-/* ==========================================================================
+/* Inter is loaded from index.html, not @import'ed here: an @import can only
+   start downloading after this file has been fetched and parsed, which put a
+   third-party request on the critical path and made first paint hostage to it.
+   ==========================================================================
    NC FUTURES — PLATFORM STYLESHEET v2.0
    Implements Finance Platform Design Specification v2.0.
    One stylesheet. Every module links this and supplies only the content region.
