@@ -34,7 +34,13 @@ async function extractRows(base64, mediaType) {
   if (!response.ok) {
     throw new Error(data?.error || `Server returned ${response.status}`);
   }
-  return data;
+  // A 200 doesn't guarantee the shape. Anything that isn't a list of row
+  // objects used to reach the grouping pass and unmount the app into a blank
+  // page, so it's rejected here instead.
+  if (!Array.isArray(data)) {
+    throw new Error("the server returned something other than a list of rows.");
+  }
+  return data.filter((row) => row && typeof row === "object");
 }
 
 // ---------- parsing & math ----------
@@ -778,10 +784,19 @@ export default function OptionsPositionAnalyzer() {
     try {
       // The first image replaces whatever was on screen; any further images in
       // the same drop merge into it.
+      let extracted = 0;
       for (const [i, file] of images.entries()) {
         const base64 = await fileToBase64(file);
         const rows = await extractRows(base64, file.type || "image/png");
+        extracted += rows.length;
         setRawRows(i === 0 ? rows : (prev) => mergeRows(prev, rows));
+      }
+      // A successful call that yields nothing used to leave the dropzone sitting
+      // there with no message, which reads as "the drop didn't register".
+      if (extracted === 0) {
+        setError(
+          "Read that screenshot, but found no position rows in it. Check the table is fully visible — including the Position column — and that at least one row has a position."
+        );
       }
     } catch (e) {
       // Only the "model couldn't parse the image" case is actually about crop

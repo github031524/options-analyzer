@@ -26,11 +26,17 @@ const app = express();
 app.use(compression());
 app.use(express.json({ limit: "10mb" }));
 
+// What the upstream vision API accepts. The client sends the browser's own
+// File.type, so anything outside this list is a file we could not read anyway.
+const ALLOWED_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
 app.post("/api/extract", async (req, res) => {
   const { base64, mediaType } = req.body || {};
-  if (!base64) {
+  if (typeof base64 !== "string" || base64.length === 0) {
     return res.status(400).json({ error: "Missing base64 image data" });
   }
+  // Don't forward an arbitrary client string into the upstream request body.
+  const imageMediaType = ALLOWED_MEDIA_TYPES.has(mediaType) ? mediaType : "image/png";
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: "Server is missing ANTHROPIC_API_KEY" });
   }
@@ -52,7 +58,7 @@ app.post("/api/extract", async (req, res) => {
           {
             role: "user",
             content: [
-              { type: "image", source: { type: "base64", media_type: mediaType || "image/png", data: base64 } },
+              { type: "image", source: { type: "base64", media_type: imageMediaType, data: base64 } },
               { type: "text", text: EXTRACTION_PROMPT },
             ],
           },
@@ -85,6 +91,12 @@ app.post("/api/extract", async (req, res) => {
       rows = JSON.parse(cleaned);
     } catch {
       return res.status(502).json({ error: "Model did not return valid JSON" });
+    }
+
+    // Parsing is not enough: "null" and "{...}" are valid JSON but not a list of
+    // rows, and forwarding either one crashed the client into a blank page.
+    if (!Array.isArray(rows)) {
+      return res.status(502).json({ error: "Model did not return a list of rows" });
     }
 
     res.json(rows);
