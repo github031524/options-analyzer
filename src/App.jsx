@@ -5,7 +5,6 @@ const ACCENT = "#5980a6";
 const ACCENT_TINT = "#dbe4ee";
 const ACCENT_TEXT = "#32485e";
 const HAIRLINE = "#c9cacc";
-const LOSS = "#a6595e";
 
 // ---------- extraction ----------
 
