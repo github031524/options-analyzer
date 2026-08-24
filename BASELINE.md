@@ -195,3 +195,63 @@ The 12.6 s FCP is caused by a render-blocking `@import` of
 `fonts.googleapis.com` at the top of `styles.css`, which fails
 (`ERR_CONNECTION_RESET`) after ~12 s in a restricted network. The app renders
 correctly in its fallback font stack once it gives up.
+
+---
+
+# POST-AUDIT VERIFICATION
+
+Re-verified at the end of Phase 6 by the same harness, against the exact
+baseline recorded above.
+
+## Behaviour — every item re-checked
+
+| Baseline item | Result |
+|---|---|
+| §4.1 NQ sample (all 5 KPIs, y-axis, `Δ0 29,522`, spot dot geometry) | identical |
+| §4.2 GC sample (two outrights → `-60`, `57,950`, no `Δ0`, loss dot) | identical |
+| §4.3 ZB sample (×1000, 64ths, zero-priced leg) | identical |
+| §4.4 Equity sample (×100, `10,000` / `-47,625`, gain dot) | identical |
+| §4.5 Multi-symbol — three sections in payload order | identical |
+| §5 all 8 degenerate + error messages | identical |
+| §6 reload persistence, **0 extra API calls** | identical |
+| §6 column resize → `170px` and persisted | identical |
+| §6 modules menu hidden → shown, 7 items | identical |
+| §1 routes, §2 API contract and all 6 failure modes | unchanged |
+
+Verified three independent ways, all against the pre-audit build:
+
+1. **DOM / geometry fingerprint** — every rendered value, class, chart path,
+   line, circle and text position across all fixtures: **identical**.
+2. **Computed styles** — 29 properties on every element on every fixture:
+   **identical**. This is what proves the CSS deletions changed no rendering.
+3. **Full-page screenshots** — `_empty`, `_menu`, `gc` and `multi` are
+   **pixel-identical**. Four fixtures differ by 12–40 pixels out of 2.24
+   million at a maximum channel delta of **1/255** — anti-aliasing rounding
+   caused by font-fetch abort timing in the harness, not a rendering change.
+
+## Performance — before → after
+
+| Metric | Before | After |
+|---|---|---|
+| Transferred (cold load) | 172.1 KB | **57.9 KB** (−66%) |
+| Hashed asset caching | `max-age=0` | `max-age=31536000, immutable` |
+| Content-Encoding | none | **brotli** |
+| CSS bundle | 11,192 B raw / 2,852 gzip | **7,629 B / 2,187** |
+| Font request starts at | t+37 ms (after CSS parsed) | **t+29 ms** (parallel) |
+| FCP (this sandbox) | 12,632 ms | 12,564 ms |
+
+FCP is essentially unchanged **here** because `fonts.googleapis.com` is
+unreachable in this network and a `<link>` stylesheet is still render-blocking;
+the win is structural (one serialised hop removed), and would show on a network
+where the font host resolves.
+
+## Robustness — new coverage
+
+Malformed-but-successful responses, none of which had any handling before:
+
+| Response | Before | After |
+|---|---|---|
+| `[]` | silent no-op, no message | named message |
+| `{...}` not an array | **crash, blank page** | message, app stays mounted |
+| `null` | **crash, blank page** | message, app stays mounted |
+| `[null, null]` | **crash, blank page** | message, app stays mounted |
