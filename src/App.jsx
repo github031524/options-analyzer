@@ -169,7 +169,7 @@ function deltaNeutralPrice(legs, baselineShift, sharesPerContract, spot) {
 // its own legs. Everything downstream (spot, multiplier, curve, totals) is
 // per-symbol, so split first and compute each group independently — a strike is
 // only meaningful against its own underlying's price.
-function buildSymbolViews(rawRows) {
+function buildSymbolViews(rawRows, manualSpots = {}) {
   const order = [];
   const groups = new Map();
   for (const row of rawRows) {
@@ -190,7 +190,17 @@ function buildSymbolViews(rawRows) {
     const priceRow = underlyingRows.find((r) => Number.isFinite(Number(r.last)));
     // A price that won't parse is as unusable as a missing row, and letting NaN
     // through would render every figure in the section as NaN.
-    const spotPrice = priceRow ? Number(priceRow.last) : null;
+    const extractedSpot = priceRow ? Number(priceRow.last) : null;
+    // A screenshot cropped to just the option rows has no underlying line to
+    // read, and the chain cannot supply one: every put only bounds the spot
+    // from below (F >= K - P), so the true price sits an unknown amount above
+    // that. Rather than guess and quietly corrupt every intrinsic, fall back to
+    // a price the user typed in.
+    const typedSpot = Number(manualSpots[ticker]);
+    const spotPrice =
+      extractedSpot ?? (Number.isFinite(typedSpot) && typedSpot > 0 ? typedSpot : null);
+    const spotIsTyped = extractedSpot == null && spotPrice != null;
+    const hasOptionRows = rows.some((r) => parseLeg(r.description));
     const baselineShift = underlyingRows.reduce((sum, r) => {
       const qty = r.position === null || r.position === "" ? 0 : Number(r.position);
       return sum + (Number.isFinite(qty) ? qty : 0);
@@ -246,11 +256,12 @@ function buildSymbolViews(rawRows) {
       netAtSpot: ready ? netPositionAt(legRows, baselineShift, spotPrice, sharesPerContract) : null,
       neutralPrice: ready ? deltaNeutralPrice(legRows, baselineShift, sharesPerContract, spotPrice) : null,
       ready,
-      issue: ready
-        ? null
-        : spotPrice == null
-          ? `${ticker}: couldn't read the underlying row — the ticker and price line above the options (e.g. "NQ Sep18'26 @CME"). Its price is what every strike is measured against; check nothing is covering it.`
-          : `${ticker}: no option rows with a position.`,
+      spotIsTyped,
+      // Missing spot is recoverable by typing one, so it gets a prompt rather
+      // than a dead-end message.
+      needsSpot: spotPrice == null && hasOptionRows,
+      issue:
+        ready || (spotPrice == null && hasOptionRows) ? null : `${ticker}: no option rows with a position.`,
     };
   });
 }
@@ -525,6 +536,22 @@ const ROWS_KEY = "options-analyzer:rows";
 const EXTRACTED_AT_KEY = "options-analyzer:extracted-at";
 const MIN_COLUMN_WIDTH = 40;
 
+const MANUAL_SPOTS_KEY = "options-analyzer:manual-spots";
+
+function loadStoredSpots() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(MANUAL_SPOTS_KEY));
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
+    // Keep only usable prices; a corrupt entry would otherwise drive the whole
+    // section's arithmetic.
+    return Object.fromEntries(
+      Object.entries(stored).filter(([, v]) => Number.isFinite(Number(v)) && Number(v) > 0)
+    );
+  } catch {
+    return {};
+  }
+}
+
 function loadStoredTimestamp() {
   try {
     const at = Number(localStorage.getItem(EXTRACTED_AT_KEY));
@@ -692,12 +719,50 @@ function TopBar({ extractedAt }) {
   );
 }
 
+// Asks for the one number a cropped screenshot can't supply. Applied on submit
+// or blur rather than per keystroke, so a half-typed "46" never renders a
+// section priced at 46.
+function SpotPrompt({ ticker, onSubmit }) {
+  const [value, setValue] = useState("");
+
+  const apply = () => {
+    const price = Number(value);
+    if (Number.isFinite(price) && price > 0) onSubmit(ticker, price);
+  };
+
+  return (
+    <form
+      className="spot-prompt"
+      onSubmit={(e) => {
+        e.preventDefault();
+        apply();
+      }}
+    >
+      <label htmlFor={`spot-${ticker}`}>
+        {ticker}: no underlying price in this screenshot — include the {ticker} contract line above
+        the options, or enter its price:
+      </label>
+      <input
+        id={`spot-${ticker}`}
+        className="spot-prompt__input"
+        inputMode="decimal"
+        autoComplete="off"
+        placeholder="e.g. 4655.3"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={apply}
+      />
+    </form>
+  );
+}
+
 // ---------- main ----------
 
 // One symbol's block: its KPI row, its chart, its table. The chart panel is a
 // drop target like the others, so a screenshot can be dropped anywhere.
 function PositionSection({ view, columnWidths, startResize, activeColumn, dragOver, onDragOver, onDragLeave, onDrop }) {
-  const { ticker, spotPrice, legRows, putsTotal, callsTotal, grandTotal, curve, netAtSpot, neutralPrice } = view;
+  const { ticker, spotPrice, spotIsTyped, legRows, putsTotal, callsTotal, grandTotal, curve, netAtSpot, neutralPrice } =
+    view;
 
   return (
     <section className="symbol-block">
@@ -714,7 +779,12 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, dragOv
                 {ticker}
               </a>
             </p>
-            <p className="kpi__figure">{spotPrice.toLocaleString()}</p>
+            {/* Flagged when typed, so an entered price is never mistaken for
+                one read off the screenshot. */}
+            <p className="kpi__figure" title={spotIsTyped ? "Price you entered, not read from the screenshot" : undefined}>
+              {spotPrice.toLocaleString()}
+              {spotIsTyped && <span className="kpi__figure-note"> (entered)</span>}
+            </p>
           </div>
         </Blueprint>
         <Blueprint>
@@ -820,6 +890,7 @@ function mergeRows(prev, incoming) {
 export default function OptionsPositionAnalyzer() {
   const [rawRows, setRawRows] = useState(loadStoredRows);
   const [extractedAt, setExtractedAt] = useState(loadStoredTimestamp);
+  const [manualSpots, setManualSpots] = useState(loadStoredSpots);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -903,21 +974,28 @@ export default function OptionsPositionAnalyzer() {
   useEffect(() => {
     try {
       localStorage.setItem(ROWS_KEY, JSON.stringify(rawRows));
+      localStorage.setItem(MANUAL_SPOTS_KEY, JSON.stringify(manualSpots));
       if (extractedAt != null) localStorage.setItem(EXTRACTED_AT_KEY, String(extractedAt));
     } catch {
       /* storage full or unavailable (private mode) — persistence is a nicety */
     }
-  }, [rawRows, extractedAt]);
+  }, [rawRows, extractedAt, manualSpots]);
 
-  const symbolViews = buildSymbolViews(rawRows);
+  const setSpot = useCallback((ticker, price) => {
+    setManualSpots((prev) => ({ ...prev, [ticker]: price }));
+  }, []);
+
+  const symbolViews = buildSymbolViews(rawRows, manualSpots);
   const readyViews = symbolViews.filter((v) => v.ready);
 
   const hasData = rawRows.length > 0;
   const showResults = readyViews.length > 0;
 
-  // Name every symbol that couldn't be drawn. With one symbol that's the whole
-  // story; with several it flags the odd one out while the rest still render.
-  const skipped = symbolViews.filter((v) => !v.ready).map((v) => v.issue);
+  // Symbols missing only a spot get an input; anything else gets named. With
+  // one symbol that's the whole story; with several it flags the odd one out
+  // while the rest still render.
+  const awaitingSpot = symbolViews.filter((v) => v.needsSpot);
+  const skipped = symbolViews.filter((v) => v.issue).map((v) => v.issue);
   const loadIssue = !hasData || skipped.length === 0 ? null : `Read the screenshot. ${skipped.join(" ")}`;
 
   return (
@@ -952,6 +1030,9 @@ export default function OptionsPositionAnalyzer() {
       )}
 
       {error ? <p className="app-error">{error}</p> : loadIssue && <p className="app-error">{loadIssue}</p>}
+
+      {!error &&
+        awaitingSpot.map((v) => <SpotPrompt key={v.ticker} ticker={v.ticker} onSubmit={setSpot} />)}
 
       {showResults && (
         <>
