@@ -181,6 +181,19 @@ p:last-child { margin-bottom: 0; }
   width: auto;
 }
 
+/* Age of the position on screen. Sits in the bar's spare right-hand side, so
+   it costs the content area no height. */
+.topbar__age {
+  margin-left: auto;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-accent-800);
+  white-space: nowrap;
+}
+
 /* Modules switcher — taken out of flow and absolutely centered so it stays
    dead-center regardless of what sits on either side. .topbar is sticky, so
    this positions against the top bar itself. */

@@ -276,3 +276,39 @@ total, and the KPI tiles agree with the table.
 | Two legs of 100.4999 | legs `100` + `100`, total **`201`** | legs `100` + `100`, total **`200`** |
 | ZB 64ths, 4 legs of 4687.5 | did not foot | puts `9,376` + calls `9,376` = **`18,752`** |
 | All §4 baseline samples | — | **unchanged** (fingerprint identical) |
+
+## Follow-up — data timestamp and upstream timeout
+
+Both flagged by the audit, now added. Neither touches the data path: the
+DOM/geometry fingerprint over every fixture is still identical to the pre-audit
+capture.
+
+**Data timestamp.** Rows persist indefinitely, so a reading from days ago was
+indistinguishable from one taken a minute ago. The age now sits in the top bar's
+otherwise-empty right side, costing the content area no height — the bar is
+still 48px and the age clears the centred switcher by 32px. Stored under its own
+key, so a position saved before this existed still loads and simply shows no
+age. Stamped only on a fresh read, never on a restore.
+
+| Case | Shown |
+|---|---|
+| No data | nothing |
+| Just extracted | `Read just now` |
+| Reload of a 3h-old reading | `Read 3h ago` (0 extra API calls) |
+| Rows saved before this feature | nothing; sections still render |
+| 5m / 90m / 26h / 5d old | `5m ago` / `2h ago` / `1d ago` / `5d ago` |
+
+Hovering gives the absolute time. The label re-renders every 30s, because a
+relative age that never updates goes stale on screen.
+
+**Upstream timeout.** The call to Anthropic had no ceiling, so an unresponsive
+API never settled the request and the page sat on `Reading…` forever. Now
+bounded by `EXTRACT_TIMEOUT_MS`, default **120s** — deliberately loose rather
+than tight, since `max_tokens: 4000` is 40–80s of generation before counting
+time to read a large image, and a shorter limit would break drops that were
+going to succeed.
+
+Verified against a local upstream that accepts the connection and never replies:
+**`HTTP 504 after 3.04s`** with `the reader didn't answer within 3s — try again,
+or use a screenshot with fewer rows.` The same request previously hung
+indefinitely.

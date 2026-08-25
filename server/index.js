@@ -30,6 +30,14 @@ app.use(express.json({ limit: "10mb" }));
 // File.type, so anything outside this list is a file we could not read anyway.
 const ALLOWED_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
+// Ceiling on the upstream call. Without one an unresponsive API never settles
+// the request and the page sits on "Reading..." forever with no way out.
+// Sized to be unreachable in normal use rather than tight: max_tokens is 4000,
+// which at typical output speed is 40-80s of generation, plus time to read a
+// large image. Anything past that is a stall, not a slow answer. Override with
+// EXTRACT_TIMEOUT_MS if the model or limits change.
+const EXTRACT_TIMEOUT_MS = Number(process.env.EXTRACT_TIMEOUT_MS) || 120_000;
+
 app.post("/api/extract", async (req, res) => {
   const { base64, mediaType } = req.body || {};
   if (typeof base64 !== "string" || base64.length === 0) {
@@ -41,9 +49,15 @@ app.post("/api/extract", async (req, res) => {
     return res.status(500).json({ error: "Server is missing ANTHROPIC_API_KEY" });
   }
 
+  // Aborting cancels the response body too, so a stall part-way through a
+  // long generation is caught as well as one before the first byte.
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), EXTRACT_TIMEOUT_MS);
+
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal: abort.signal,
       headers: {
         "Content-Type": "application/json",
         "x-api-key": process.env.ANTHROPIC_API_KEY,
@@ -101,8 +115,15 @@ app.post("/api/extract", async (req, res) => {
 
     res.json(rows);
   } catch (err) {
+    if (err?.name === "AbortError") {
+      return res.status(504).json({
+        error: `the reader didn't answer within ${Math.round(EXTRACT_TIMEOUT_MS / 1000)}s — try again, or use a screenshot with fewer rows.`,
+      });
+    }
     console.error(err);
     res.status(500).json({ error: "Extraction failed" });
+  } finally {
+    clearTimeout(timer);
   }
 });
 
