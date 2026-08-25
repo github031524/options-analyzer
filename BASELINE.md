@@ -301,6 +301,30 @@ age. Stamped only on a fresh read, never on a restore.
 Hovering gives the absolute time. The label re-renders every 30s, because a
 relative age that never updates goes stale on screen.
 
+## Follow-up — spot price for a screenshot cropped above the underlying
+
+A screenshot containing only option rows was a dead end: every strike is priced
+against the underlying's spot, and with no underlying line there was nothing to
+measure against. The message also misled, telling the user to check nothing was
+*covering* the row when it simply wasn't in frame.
+
+The chain cannot supply the missing price. Each put only bounds it from below —
+`P ≥ max(K − F, 0)`, so `F ≥ K − P` — and since the deepest put still carries
+time value, the true spot sits an unknown amount above that bound. On the
+reported GC screenshot the tightest bound was `F ≥ 4650.80`, consistent with a
+spot of 4660 or 4750 alike. Inferring one would have silently corrupted every
+intrinsic and extrinsic figure, so the app asks instead.
+
+| State | Behaviour |
+|---|---|
+| Options only, no underlying | inline prompt naming the symbol, with a price field |
+| Price entered | section renders normally; spot marked `(entered)` |
+| Reload | price persists, 0 extra API calls |
+| A later screenshot *with* the underlying | the read price wins over the typed one |
+
+Only one baseline line changed: the `noUnderlying` fixture's dead-end error is
+now the prompt. Everything else in the fingerprint is untouched.
+
 **Upstream timeout.** The call to Anthropic had no ceiling, so an unresponsive
 API never settled the request and the page sat on `Reading…` forever. Now
 bounded by `EXTRACT_TIMEOUT_MS`, default **120s** — deliberately loose rather

@@ -433,6 +433,46 @@ a.topbar__modules-item:hover { background: var(--color-accent-100); }
   gap: var(--space-3);
 }
 
+/* Asks for the spot price when the screenshot was cropped above it. Styled as
+   a prompt rather than an error: it is recoverable without re-cropping. */
+.spot-prompt {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: var(--hairline);
+  border-color: var(--color-accent-500);
+  background: var(--color-accent-100);
+  font-size: 12.5px;
+  color: var(--color-accent-900);
+}
+
+.spot-prompt__input {
+  width: 130px;
+  padding: var(--space-2) var(--space-3);
+  border: var(--hairline);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.spot-prompt__input:focus {
+  outline: 0;
+  border-color: var(--color-accent-500);
+  box-shadow: inset 0 0 0 1px var(--color-accent-500);
+}
+
+/* Marks a spot the user typed rather than one read off the screenshot. */
+.kpi__figure-note {
+  font-weight: 500;
+  font-size: var(--size-micro);
+  color: var(--color-accent-800);
+}
+
 .app-error {
   color: var(--color-loss);
   font-size: 12.5px;
