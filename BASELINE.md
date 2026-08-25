@@ -255,3 +255,24 @@ Malformed-but-successful responses, none of which had any handling before:
 | `{...}` not an array | **crash, blank page** | message, app stays mounted |
 | `null` | **crash, blank page** | message, app stays mounted |
 | `[null, null]` | **crash, blank page** | message, app stays mounted |
+
+## Follow-up fix — subtotal rounding
+
+The audit flagged that subtotals and the grand total rounded independently, so
+the displayed columns could fail to add up (puts `100` + calls `100` under a
+total of `201`). The table had the same defect, not just the KPI tiles.
+
+Fixed by rounding a leg's dollar total once, at the leg, so every sum above it
+is exact integer arithmetic. A leg total is the atom the table prints and the
+subtotals are built from; rounding it once makes the columns foot at every
+level. Costs at most half a dollar per leg against the unrounded figure.
+
+Verified by asserting arithmetic rather than eyeballing values: for every
+fixture, leg totals equal the puts subtotal, puts + calls equals the grand
+total, and the KPI tiles agree with the table.
+
+| Case | Before | After |
+|---|---|---|
+| Two legs of 100.4999 | legs `100` + `100`, total **`201`** | legs `100` + `100`, total **`200`** |
+| ZB 64ths, 4 legs of 4687.5 | did not foot | puts `9,376` + calls `9,376` = **`18,752`** |
+| All §4 baseline samples | — | **unchanged** (fingerprint identical) |
