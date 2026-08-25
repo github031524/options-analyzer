@@ -520,7 +520,29 @@ const COLUMNS = [
 
 const COLUMN_WIDTHS_KEY = "options-analyzer:column-widths";
 const ROWS_KEY = "options-analyzer:rows";
+// Kept in its own key rather than folded into the stored rows, so a position
+// saved before this existed still loads — it just has no age to show.
+const EXTRACTED_AT_KEY = "options-analyzer:extracted-at";
 const MIN_COLUMN_WIDTH = 40;
+
+function loadStoredTimestamp() {
+  try {
+    const at = Number(localStorage.getItem(EXTRACTED_AT_KEY));
+    return Number.isFinite(at) && at > 0 ? at : null;
+  } catch {
+    return null;
+  }
+}
+
+function formatAge(ms) {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
 
 // Restore the last extracted position so a reload doesn't mean re-dropping the
 // screenshot. Anything unreadable or not in the expected shape is discarded
@@ -588,7 +610,29 @@ const MODULES = [
 
 const CURRENT_MODULE = MODULES.find((m) => m.current);
 
-function TopBar() {
+// How old the position on screen is. Rows persist indefinitely, so without
+// this a reading from days ago is indistinguishable from one taken a minute
+// ago — and option prices make that difference matter. Lives in the top bar's
+// otherwise-empty right side, which costs the content area no height.
+function DataAge({ at }) {
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    if (at == null) return;
+    // A relative age that never re-renders would go stale on screen.
+    const id = setInterval(() => forceTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, [at]);
+
+  if (at == null) return null;
+  return (
+    <span className="topbar__age" title={`Extracted ${new Date(at).toLocaleString()}`}>
+      Read {formatAge(Date.now() - at)}
+    </span>
+  );
+}
+
+function TopBar({ extractedAt }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -643,6 +687,7 @@ function TopBar() {
           )}
         </div>
       </div>
+      <DataAge at={extractedAt} />
     </header>
   );
 }
@@ -774,6 +819,7 @@ function mergeRows(prev, incoming) {
 
 export default function OptionsPositionAnalyzer() {
   const [rawRows, setRawRows] = useState(loadStoredRows);
+  const [extractedAt, setExtractedAt] = useState(loadStoredTimestamp);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -800,6 +846,9 @@ export default function OptionsPositionAnalyzer() {
         extracted += rows.length;
         setRawRows(i === 0 ? rows : (prev) => mergeRows(prev, rows));
       }
+      // Stamped only on a fresh read, never on a restore from storage — the
+      // point is how old the prices are, not when the page was opened.
+      setExtractedAt(Date.now());
       // A successful call that yields nothing used to leave the dropzone sitting
       // there with no message, which reads as "the drop didn't register".
       if (extracted === 0) {
@@ -854,10 +903,11 @@ export default function OptionsPositionAnalyzer() {
   useEffect(() => {
     try {
       localStorage.setItem(ROWS_KEY, JSON.stringify(rawRows));
+      if (extractedAt != null) localStorage.setItem(EXTRACTED_AT_KEY, String(extractedAt));
     } catch {
       /* storage full or unavailable (private mode) — persistence is a nicety */
     }
-  }, [rawRows]);
+  }, [rawRows, extractedAt]);
 
   const symbolViews = buildSymbolViews(rawRows);
   const readyViews = symbolViews.filter((v) => v.ready);
@@ -872,7 +922,7 @@ export default function OptionsPositionAnalyzer() {
 
   return (
     <>
-      <TopBar />
+      <TopBar extractedAt={hasData ? extractedAt : null} />
       <div className="content">
       <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={onSelect} />
 
