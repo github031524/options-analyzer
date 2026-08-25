@@ -216,7 +216,16 @@ function buildSymbolViews(rawRows) {
                 last,
                 intrinsic,
                 extrinsic,
-                totalExtrinsic: extrinsic * Math.abs(position) * dollarMultiplier,
+                // Rounded here, at the leg, rather than at each place it is
+                // printed. A leg's dollar total is the atom the table shows and
+                // the subtotals are built from, so rounding it once makes every
+                // sum exact integer arithmetic and the columns foot. Rounding
+                // independently at each display instead let full-precision
+                // values disagree once printed: two legs of 100.4999 each showed
+                // as 100 and 100 under a total of 201, because the unrounded sum
+                // 200.9999 rounded up on its own. Costs at most half a dollar
+                // per leg against the unrounded figure.
+                totalExtrinsic: Math.round(extrinsic * Math.abs(position) * dollarMultiplier),
               };
             })
             .filter(Boolean)
