@@ -1,5 +1,6 @@
 import "dotenv/config";
 import compression from "compression";
+import crypto from "crypto";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -21,9 +22,107 @@ For each qualifying row, return an object with exactly these fields:
 
 Respond with ONLY a raw JSON array of these objects. No markdown code fences, no explanation, no text before or after the array.`;
 
+// --- Auth -------------------------------------------------------------------
+// The app is a personal tool on a public URL, so everything except /health sits
+// behind HTTP Basic. Credentials come from the environment only; if any of the
+// three are unset we refuse every request rather than serving the app openly.
+const { APP_USERNAME, APP_PASSWORD, SECRET_KEY } = process.env;
+const AUTH_CONFIGURED = Boolean(APP_USERNAME && APP_PASSWORD && SECRET_KEY);
+
+const COOKIE_NAME = "oa_auth";
+const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Hash first so both sides are the same length: timingSafeEqual throws on a
+// length mismatch, and that throw would itself leak the length of the secret.
+function safeEqual(a, b) {
+  const digest = (v) => crypto.createHash("sha256").update(String(v), "utf8").digest();
+  return crypto.timingSafeEqual(digest(a), digest(b));
+}
+
+// Stateless session: the cookie carries its own expiry plus an HMAC over it, so
+// nothing is held server-side and a redeploy doesn't sign anyone out. Binding
+// the username into the signature means changing APP_USERNAME revokes old
+// cookies; rotating SECRET_KEY revokes all of them.
+function sign(exp) {
+  return crypto.createHmac("sha256", SECRET_KEY).update(`${APP_USERNAME}.${exp}`).digest("base64url");
+}
+
+function validCookie(value) {
+  if (!value) return false;
+  const dot = value.lastIndexOf(".");
+  if (dot === -1) return false;
+  const exp = Number(value.slice(0, dot));
+  if (!Number.isFinite(exp) || exp <= Date.now()) return false;
+  return safeEqual(value.slice(dot + 1), sign(exp));
+}
+
+function readCookie(header, name) {
+  for (const part of (header || "").split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() !== name) continue;
+    const raw = part.slice(eq + 1).trim();
+    // A malformed percent-escape from a hand-crafted request must not throw.
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }
+  return null;
+}
+
+function challenge(res) {
+  res.set("WWW-Authenticate", 'Basic realm="options-analyzer", charset="UTF-8"');
+  return res.status(401).type("text/plain").send("Authentication required");
+}
+
+function requireAuth(req, res, next) {
+  if (!AUTH_CONFIGURED) {
+    return res
+      .status(503)
+      .type("text/plain")
+      .send("Server is missing APP_USERNAME, APP_PASSWORD or SECRET_KEY");
+  }
+
+  if (validCookie(readCookie(req.headers.cookie, COOKIE_NAME))) return next();
+
+  const header = req.headers.authorization || "";
+  if (!header.startsWith("Basic ")) return challenge(res);
+
+  const decoded = Buffer.from(header.slice("Basic ".length), "base64").toString("utf8");
+  const sep = decoded.indexOf(":");
+  if (sep === -1) return challenge(res);
+
+  // Both comparisons always run, so how long the reply takes says nothing about
+  // which half was wrong.
+  const userOk = safeEqual(decoded.slice(0, sep), APP_USERNAME);
+  const passOk = safeEqual(decoded.slice(sep + 1), APP_PASSWORD);
+  if (!userOk || !passOk) return challenge(res);
+
+  const exp = Date.now() + COOKIE_MAX_AGE_MS;
+  res.cookie(COOKIE_NAME, `${exp}.${sign(exp)}`, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: COOKIE_MAX_AGE_MS,
+  });
+  next();
+}
+
 const app = express();
 // The bundle was going out uncompressed even when the client asked for gzip.
 app.use(compression());
+
+// Railway's healthcheck runs without credentials, so this has to sit above the
+// auth middleware. It reports nothing about the app beyond being up.
+app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+// Ahead of every route, every static file and the SPA fallback below — and
+// ahead of the body parser, so an unauthenticated caller can't make us buffer
+// 10MB before being turned away.
+app.use(requireAuth);
 app.use(express.json({ limit: "10mb" }));
 
 // What the upstream vision API accepts. The client sends the browser's own

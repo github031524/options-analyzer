@@ -12,11 +12,12 @@ Reads an Interactive Brokers (IBKR) options position **screenshot**, extracts th
 
 ## Stack
 - Frontend: React 18 + Vite (`src/`)
-- Backend: Express (`server/index.js`) — one route `POST /api/extract`
+- Backend: Express (`server/index.js`) — one route `POST /api/extract`, plus public `GET /health`
 - Extraction: Anthropic Messages API (vision), model `claude-sonnet-4-6`
+- Auth: HTTP Basic on everything except `/health`, then a 30-day signed cookie
 
 ## Run it
-1. **Set the key:** copy `.env.example` to `.env`, set `ANTHROPIC_API_KEY=...`
+1. **Set the env:** copy `.env.example` to `.env`, set `ANTHROPIC_API_KEY`, `APP_USERNAME`, `APP_PASSWORD`, `SECRET_KEY`
 2. **Start API:** `npm run start` (Express on :3000)
 3. **Start UI:** `npm run dev` (Vite, proxies `/api` → :3000)
 4. **Build:** `npm run build` → `dist/` (served by Express in prod)
@@ -33,5 +34,6 @@ Reads an Interactive Brokers (IBKR) options position **screenshot**, extracts th
 
 ## Rules
 - Never commit `.env` or secrets.
+- Never log credentials, the `Authorization` header, or the auth cookie.
 - Keep the extraction prompt output as **raw JSON only** (no code fences).
 - Match existing code style; keep changes minimal.
