@@ -336,3 +336,52 @@ Verified against a local upstream that accepts the connection and never replies:
 **`HTTP 504 after 3.04s`** with `the reader didn't answer within 3s — try again,
 or use a screenshot with fewer rows.` The same request previously hung
 indefinitely.
+
+---
+
+## Follow-up — HTTP Basic auth
+
+The app sat on a public Railway URL with no gate at all: anyone who found it
+could upload screenshots and spend the account's Anthropic quota. Everything
+now sits behind Basic auth except `GET /health`, which Railway's healthcheck
+calls without credentials.
+
+`requireAuth` is registered after `compression()` and before `express.json()`,
+so it covers the API, `/assets/*`, the static build output and the `GET *` SPA
+fallback in one place — and an unauthenticated caller can't make the server
+buffer a 10 MB body before being turned away.
+
+Credentials come from `APP_USERNAME` / `APP_PASSWORD` and are compared with
+`crypto.timingSafeEqual` over SHA-256 digests, so both sides are always the same
+length — a raw compare throws on a length mismatch, and that throw leaks the
+length of the secret. Both halves are always compared, so response time says
+nothing about which one was wrong.
+
+A successful prompt sets `oa_auth`, a stateless `<exp>.<hmac>` token signed with
+`SECRET_KEY`: `HttpOnly`, `Secure`, `SameSite=Lax`, 30 days. Nothing is held
+server-side, so a redeploy doesn't sign anyone out. The username is inside the
+signature, so changing `APP_USERNAME` revokes existing cookies; rotating
+`SECRET_KEY` revokes all of them.
+
+| Request | Status |
+|---|---|
+| `GET /health`, no credentials | 200 `{"status":"ok"}` |
+| any other path, no credentials | 401 + `WWW-Authenticate: Basic` |
+| wrong username, or wrong password | 401 |
+| correct credentials | 200 + `Set-Cookie: oa_auth=…; HttpOnly; Secure; SameSite=Lax` |
+| valid cookie, no `Authorization` | 200 |
+| cookie with tampered signature | 401 |
+| cookie with expiry bumped, old signature | 401 |
+| correctly signed cookie, expiry past | 401 |
+| cookie signed for a different username | 401 |
+| malformed cookie or `Authorization` header | 401 (not 500) |
+| `/assets/*` and deep SPA routes, no credentials | 401 |
+| any request with `APP_USERNAME`/`APP_PASSWORD`/`SECRET_KEY` unset | 503, `/health` still 200 |
+
+Missing configuration fails closed: the middleware refuses every request rather
+than defaulting to open. Nothing logs credentials, the `Authorization` header
+or the cookie value.
+
+`Secure` means the cookie won't stick over plain http on localhost — Basic auth
+still works there, it just re-prompts. Railway is HTTPS, so production is
+unaffected.
