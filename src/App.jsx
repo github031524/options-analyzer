@@ -249,7 +249,12 @@ function buildSymbolViews(rawRows, manualSpots = {}) {
                 // as 100 and 100 under a total of 201, because the unrounded sum
                 // 200.9999 rounded up on its own. Costs at most half a dollar
                 // per leg against the unrounded figure.
-                totalExtrinsic: Math.round(extrinsic * Math.abs(position) * dollarMultiplier),
+                // Signed by direction: a short leg collected this premium
+                // (positive — decay earns it), a long leg paid it (negative —
+                // decay burns it). Subtotals then net the way the account
+                // does, instead of adding absolute values that painted paid
+                // premium green and couldn't tell a fly from its inverse.
+                totalExtrinsic: Math.round(extrinsic * -position * dollarMultiplier),
               };
             })
             .filter(Boolean)
