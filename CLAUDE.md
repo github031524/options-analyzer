@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 ## Response style — READ FIRST
-- **Always answer TLDR.** Short, plain, understandable. No filler, no preamble.
+- **Extremely concise. Plain English.** Short sentences. Everyday words. No filler, no preamble, no jargon — if a technical term is needed, explain it in a few words.
 - Lead with the answer. Details only if asked.
 - **Any action for the user → give exact, numbered steps and bold every to-do.**
 - **Auto-merge PRs. Do NOT ask for approval.**
