@@ -140,27 +140,41 @@ function deltaNeutralPrice(legs, baselineShift, sharesPerContract, spot) {
     priced.reduce((sum, l) => sum + l.position * black76Delta(l.type, F, l.strike, l.T, l.iv) * sharesPerContract, 0);
 
   const strikes = legs.map((l) => l.strike);
-  let lo = Math.min(...strikes) * 0.5;
-  let hi = Math.max(...strikes) * 1.5;
-  let fLo = netDelta(lo), fHi = netDelta(hi);
+  const lo = Math.min(...strikes) * 0.5;
+  const hi = Math.max(...strikes) * 1.5;
 
-  // Far from the strikes every option delta underflows toward zero, so a
-  // near-zero value at a bracket edge is the tail flattening out, not a
-  // crossing. Without this a position that never actually crosses — short puts
-  // and nothing else, whose net delta stays positive and only decays — would
-  // report the bracket edge itself as its neutral price.
+  // Far from the strikes every option delta underflows toward zero, so values
+  // smaller than eps are the tail flattening out, not a crossing. Testing only
+  // the bracket ENDPOINTS for that missed real roots, though: an all-put
+  // structure (e.g. a 1/-3/1 put fly) can cross zero mid-range and still decay
+  // to nothing at the top of the bracket, and the endpoint test read that
+  // decayed tail as "no crossing". So scan across the bracket for a sign
+  // change between meaningful values — stepping over the underflow zone rather
+  // than treating it as a root — and bisect inside the change.
   const size = legs.reduce((s, l) => s + Math.abs(l.position), 0) * sharesPerContract;
   const eps = Math.max(size * 1e-4, 1e-9);
-  if (Math.abs(fLo) < eps || Math.abs(fHi) < eps) return null;
-  if (fLo > 0 === fHi > 0) return null; // no crossing in range
 
-  for (let i = 0; i < 200; i++) {
-    const mid = (lo + hi) / 2;
-    const fMid = netDelta(mid);
-    if (fMid === 0) return mid;
-    if (fLo > 0 === fMid > 0) { lo = mid; fLo = fMid; } else { hi = mid; fHi = fMid; }
+  const STEPS = 400;
+  let prevX = null;
+  let prevF = null;
+  for (let i = 0; i <= STEPS; i++) {
+    const x = lo + ((hi - lo) * i) / STEPS;
+    const f = netDelta(x);
+    if (Math.abs(f) < eps) continue;
+    if (prevF != null && f > 0 !== prevF > 0) {
+      let a = prevX, b = x, fa = prevF;
+      for (let k = 0; k < 100; k++) {
+        const mid = (a + b) / 2;
+        const fMid = netDelta(mid);
+        if (fMid === 0) return mid;
+        if (fMid > 0 === fa > 0) { a = mid; fa = fMid; } else { b = mid; }
+      }
+      return (a + b) / 2;
+    }
+    prevX = x;
+    prevF = f;
   }
-  return (lo + hi) / 2;
+  return null; // never crosses with real weight behind it
 }
 
 // ---------- per-symbol grouping ----------
