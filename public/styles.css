@@ -1,0 +1,1220 @@
+/* Inter, self-hosted. The three faces live in fonts/ beside this file — Latin
+   and Latin Extended subsets, woff2, about 50KB each — so there is no
+   third-party request, no render-blocking chain (stylesheet, then Google's
+   font CSS, then the font file, in series), and the same rendering on every
+   machine. Copy the folder with the stylesheet: the URLs are relative to it.
+   font-display: swap shows text in the fallback face until Inter arrives
+   rather than hiding it. Licence: fonts/LICENSE.txt (SIL Open Font License). */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/Inter-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/Inter-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/Inter-SemiBold.woff2") format("woff2");
+}
+
+/* ==========================================================================
+   NC FUTURES — PLATFORM STYLESHEET
+   Implements the Finance Platform Design Specification, the master UI
+   template. One living stylesheet — no versions.
+   Source of truth: the spec (financeplatformdesignspec.md) — this stylesheet
+   implements it; where an app and the spec disagree, the spec wins. One
+   stylesheet. Every module links this and supplies only the content
+   region.
+
+   CONTENTS
+     01  Tokens
+     02  Reset & base
+     03  Type
+     04  Shell — top bar, content region
+     05  Blueprint frame
+     06  Buttons & tags
+     07  KPI tile
+     08  Data table
+     09  Toolbar & tabs
+     10  Fields & inputs
+     11  Grid helpers
+     12  Numeric & delta treatment
+     13  Scrollbar
+     14  Row banding & grouping
+     15  Symbol / ticker link
+     16  Company name cell
+     17  Dropzone
+     18  States — loading, empty, error, invalid field
+   ========================================================================== */
+
+
+/* 01 · TOKENS ============================================================= */
+
+:root {
+  /* Light-only, and say so. Without this, Chrome on Android's "auto-dark"
+     recolours light pages on its own — the whole one-colour system,
+     gain/loss red and green included. `only light` opts out. Pair it with
+     <meta name="color-scheme" content="only light"> in <head> (spec §03). */
+  color-scheme: only light;
+
+  /* Native checkboxes, radios and range sliders take the accent instead of
+     the browser's default blue — one line, no custom controls. */
+  accent-color: var(--color-accent-500);
+
+  /* Color */
+  --color-bg:      #f2f2f3;
+  --color-surface: #e9e9ea;
+  --color-text:    #1d1f20;
+
+  /* Accent ramp — 500 is base; 100–300 tinted fills & hovers;
+     700–900 text on tint and pressed states. */
+  --color-accent-100: #edf2f7;
+  --color-accent-200: #dbe4ee;
+  --color-accent-300: #c0d0e0;
+  --color-accent-400: #8fa9c4;
+  --color-accent-500: #5980a6;
+  --color-accent-600: #4d6f90;
+  --color-accent-700: #3f5b77;
+  --color-accent-800: #32485e;
+  --color-accent-900: #253544;
+
+  --color-accent: var(--color-accent-500);
+
+  /* Gain/loss — the one documented break from "one color". Both clear WCAG AA
+     (4.5:1) on every background in the system: plain bg, banded surface rows,
+     and accent-200 hover, bottoming out at 4.84:1 on a hovered row. Small
+     tabular numbers, so legibility governs the choice. */
+  --color-gain:   #206f31;
+  --color-loss:   #b42d36;
+
+  /* Hairline — the only border in the system */
+  --hairline-color: #c9cacc;
+  --hairline: 1px solid var(--hairline-color);
+
+  /* Type. Inter has no Chinese glyphs, so Traditional-Chinese company names
+     (Taiwan Screener) fall through to a NAMED face — PingFang on Mac,
+     JhengHei on Windows, Noto Sans TC elsewhere — instead of whatever each
+     machine happens to pick. Latin text never reaches the fallbacks. */
+  --font-heading: "Inter", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui, -apple-system, sans-serif;
+  --font-body:    "Inter", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui, -apple-system, sans-serif;
+
+  --size-title:   clamp(34px, 3.2vw, 40px);
+  --size-section: 15px;
+  --size-figure:  18px;
+  --size-body:    14px;
+  --size-label:   10.5px;
+  --size-micro:   9.5px;
+
+  --track-label: 0.13em;
+
+  /* Spacing — 0.85× scale, 3.4 → 27.2px */
+  --space-1: 3.4px;
+  --space-2: 6.8px;
+  --space-3: 10.2px;
+  --space-4: 13.6px;
+  --space-5: 17px;
+  --space-6: 20.4px;
+  --space-7: 23.8px;
+  --space-8: 27.2px;
+
+  /* Table density — compact by default across the platform */
+  --table-cell-py: 4px;
+  --table-cell-px: 10px;
+
+  /* Controls — one height for buttons, inputs and selects, so a toolbar row
+     lines up. Only .btn-icon is free to be smaller. */
+  --control-h: 28px;
+
+  /* Layout */
+  --radius: 8px;
+  --content-max: 1680px;
+  --gutter: clamp(16px, 3vw, 32px);
+  --grid-gap: clamp(12px, 1.5vw, 20px);
+  --topbar-h: 48px;
+
+  /* Company-cell marquee (§16) — the duration of one pan; tune per app */
+  --marquee-speed: 6s;
+}
+
+
+/* 02 · RESET & BASE ======================================================= */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+/* Rounding is applied to the boxed things, not blanket-applied to every
+   element. A universal `* { border-radius }` also rounds table cells, rows,
+   images and the page itself, and quietly rounds anything added later that
+   shouldn't be. Keep this list in step with new boxed components. */
+.blueprint,
+.btn,
+.input,
+select.input,
+textarea.input,
+.tag,
+.avatar,
+.topbar__modules-item,
+.dropzone { border-radius: var(--radius); }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--size-body);
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+img, svg, canvas { display: block; max-width: 100%; }
+
+/* Form controls inherit the page font and colour. Browsers give buttons,
+   inputs and selects their own font (Arial on most systems), so a control
+   that missed its .btn/.input class silently broke rule 3 — Inter,
+   everything, no exceptions. Element-level, so .btn and .input still win. */
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* Plain links — anything that is not a ticker (.symbol, §15) or a control.
+   Accent-800, the one accent value for text, with a thin offset underline;
+   never the browser's blue and visited-purple, which are stray colours in a
+   one-colour system. Hover thickens the underline; no colour change. */
+a {
+  color: var(--color-accent-800);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover { text-decoration-thickness: 2px; }
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-700);
+  outline-offset: 2px;
+}
+
+/* Reduced motion: every animation and transition collapses to one instant
+   frame, and smooth scrolling is off. Looping animations must also be told to
+   run once — a 0.01ms INFINITE animation is a jitter, not a pause. The company
+   marquee (§16) additionally switches itself off and keeps its ellipsis. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* 03 · TYPE =============================================================== */
+
+h1, h2, h3, h4, h5, h6,
+.title, .section-head, .label, .figure {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* Bare headings land on the scale: h1 is the title, h2 the section head, h3
+   the label — a heading needs no class to look right (a bare <h2> was the
+   browser's 21px, above the 15px section head). The classes below stay for
+   non-heading elements that want the same treatment, and win on a heading
+   that carries one. */
+h1 { font-size: var(--size-title); letter-spacing: -0.01em; line-height: 1.05; }
+h2 { font-size: var(--size-section); letter-spacing: 0.02em; line-height: 1.2; }
+h3 { font-size: var(--size-label); letter-spacing: var(--track-label); line-height: 1.3; color: var(--color-accent-800); }
+
+/* Only ever names a CONTENT ENTITY the page is about — a ticker on a detail
+   page, an index name on a builder page. Never the app's own name: the top-bar
+   switcher already shows that (§04), so a heading repeating it is redundant
+   chrome. Most pages open straight into their first working element. */
+.title {
+  font-size: var(--size-title);
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+}
+
+.section-head {
+  font-size: var(--size-section);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.label {
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+  line-height: 1.3;
+  color: var(--color-accent-800);
+  margin-bottom: var(--space-2);
+}
+
+.micro {
+  font-family: var(--font-body);
+  font-size: var(--size-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-accent-800);
+}
+
+p { margin: 0 0 var(--space-4); }
+p:last-child { margin-bottom: 0; }
+
+
+/* 04 · SHELL ============================================================== */
+
+/* Two fixed layers (spec §03) — top bar and content region. There is no app
+   context bar; don't add one. A page's own status (e.g. "Updated 3:50 AM", a
+   refresh spinner) lives inline in its own toolbar row instead of a dedicated
+   shell strip.
+
+   A · Global top bar — 48px, sticky, hairline base. Brand mark (left) +
+   Modules switcher (centered) + account chip (right, optional). */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  height: var(--topbar-h);
+  padding: 0 var(--gutter);
+  background: var(--color-bg);
+  border-bottom: var(--hairline);
+}
+
+/* An <a> to the app's own start page (spec §03) — a link that looks like the
+   mark, not like a link: no underline, no colour of its own. Keyboard focus
+   gets the global ring. */
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* The brand mark is an <img> of the shared logo asset (see §04a below),
+   not a text lockup — every app renders the identical file. */
+.topbar__brand img {
+  height: 34.56px;
+  width: auto;
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: auto;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: var(--hairline);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-micro);
+  letter-spacing: 0.06em;
+}
+
+/* Modules switcher — horizontally centered in the top bar. The top bar is a
+   flex row (brand on the left, actions pushed right), so a switcher left in
+   normal flow would sit next to the brand at the far left. Instead it's taken
+   out of flow and absolutely centered, so it stays dead-center regardless of
+   the brand and account-chip widths on either side. .topbar is sticky — a
+   positioned ancestor — so this positions against the top bar itself.
+
+   The trigger is labelled with the CURRENT app's name, not the word
+   "Modules" — it reads as a "you are here" marker that happens to be
+   clickable. Its Blueprint(solid) dropdown opens below the trigger and lists
+   every module (§04b); entries open in a new tab, so the current tab never
+   navigates away. Not a fixed-width menu: it hugs its content (see .blueprint
+   usage note in §05) so it reads as centered under the trigger regardless of
+   how many modules are listed. The dropdown is a <nav> of plain links — a
+   disclosure, not an application menu — toggled with [hidden]; the trigger
+   carries aria-expanded/aria-controls and the app closes it on Escape and on
+   an outside click (spec §03 has the nine lines). */
+.topbar__modules {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+}
+
+.topbar__modules-trigger { white-space: nowrap; }
+
+/* Phones. Absolute centring ignores the brand mark, so below ~470px the
+   switcher landed on top of the logo (38px of overlap at 400px). Under 640px
+   it drops back into the flex flow at the right of the bar; the menu, which
+   positions against .topbar, then opens centred under the bar. Desktop is
+   unchanged. */
+@media (max-width: 640px) {
+  .topbar__modules {
+    position: static;
+    transform: none;
+    margin-left: auto;
+  }
+}
+
+/* The open menu — anchored under the trigger and centered on it. Selector is
+   deliberately two-class: the menu also carries .blueprint, which is declared
+   later (§05) and would otherwise win `position: relative` at equal
+   specificity and drop the menu back into flow beside the trigger. */
+.topbar__modules .topbar__modules-menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  padding: var(--space-2);
+  margin-bottom: 0;
+}
+
+.topbar__modules .topbar__modules-menu[hidden] { display: none; }
+
+.topbar__modules-item {
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-text);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+a.topbar__modules-item:hover { background: var(--color-accent-100); }
+
+/* The current app — listed but inert, not a link. */
+.topbar__modules-item[aria-current="page"] {
+  color: var(--color-accent-800);
+  background: var(--color-accent-100);
+  cursor: default;
+}
+
+/* B · Content region — the only part an app owns. */
+.content {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: clamp(16px, 3vw, 32px) var(--gutter);
+}
+
+/* Architecture: every app is a fully standalone deploy. No shared console,
+   no iframing, no shared auth or data layer. Each app copies this
+   stylesheet + the logo asset into its own repo and reproduces the shell
+   markup locally. */
+
+
+/* 04a · BRAND MARK ========================================================
+   The logo is a literal shared SVG asset (three rising bars in accent-500 +
+   the "NC Futures" wordmark, set in Inter and outlined to paths so an <img>
+   renders it identically on every machine), not a redrawable component —
+   every app embeds the SAME file, unmodified. Take logo.svg from the
+   design-spec repo, alongside this file; copies in older apps are the
+   live-text version. */
+
+
+/* 05 · BLUEPRINT FRAME — THE SIGNATURE ==================================== */
+
+/* A plain hairline frame. No `+` corner registration marks — do not draw
+   them. The .corner rule below is a safety net that hides any such element
+   inherited from older markup. */
+
+.blueprint {
+  position: relative;
+  border: var(--hairline);
+  background: transparent;
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.blueprint .corner {
+  display: none;
+}
+
+/* Tinted variant — e.g. today's cell in a tracker. A tint, not a fill: rule 1
+   allows the light accent steps and the surface grey wherever they stay
+   tints; the primary button is the only solid object. */
+.blueprint--tint { background: var(--color-accent-100); }
+
+/* Solid variant — floating panels only (dropdowns, popovers) that need an
+   opaque fill so page content doesn't show through. Not a licence for
+   filled surfaces in the page body generally — those stay transparent. */
+.blueprint--solid { background: var(--color-bg); }
+
+
+/* 06 · BUTTONS & TAGS ===================================================== */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  /* Deliberately tight — 6.8/13.6, not the 10.2/17 a button this size would
+     normally get. Takes the control to --control-h (28px) instead of 34px
+     without touching the label, so buttons read as controls in a toolbar
+     rather than as slabs. .btn-ghost and .btn-icon override from here.
+     line-height is explicit: a <button> ignores the page's 1.5 but an
+     <a class="btn"> inherits it, which made link-buttons 3px taller than real
+     buttons in the same row. Labels never wrap. */
+  padding: var(--space-2) var(--space-4);
+  min-height: var(--control-h);
+  line-height: 1.2;
+  white-space: nowrap;
+  border: var(--hairline);
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms linear, color 120ms linear;
+}
+
+.btn:hover { background: var(--color-accent-100); }
+.btn:active { background: var(--color-accent-200); color: var(--color-accent-900); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* THE ONE EXCEPTION — the single solid object in the system.
+   Accent fill; corners rounded to --radius (8px). Filled at 600, not 500:
+   white on 500 measures 4.15:1, under the 4.5 needed for a label this small,
+   and this is the most important control in the system. 600 takes it to
+   5.26:1 and is already in the ramp, so no new colour enters the palette.
+   Hover/active step down the ramp from there. */
+.btn-primary {
+  background: var(--color-accent-600);
+  border-color: var(--color-accent-600);
+  color: #fff;
+}
+
+.btn-primary:hover { background: var(--color-accent-700); border-color: var(--color-accent-700); }
+.btn-primary:active { background: var(--color-accent-800); border-color: var(--color-accent-800); color: #fff; }
+
+/* Ghost — outline only, no hairline box */
+.btn-ghost {
+  border-color: transparent;
+  padding-inline: var(--space-2);
+}
+.btn-ghost:hover { border-color: var(--hairline-color); background: transparent; }
+
+/* Compact variant — icon-only actions inside dense contexts (e.g. a table
+   row's hover-revealed actions), where the default padding would blow out
+   to toolbar size inside a 5px-tall cell. The one control allowed below
+   --control-h — but never below 24 × 24px, the WCAG 2.2 minimum target: a
+   16px icon with 2px padding measured 22px. */
+.btn-icon {
+  padding: 2px;
+  min-width: 24px;
+  min-height: 24px;
+  border-color: transparent;
+}
+.btn-icon:hover { background: var(--color-accent-100); }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border: var(--hairline);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+}
+
+.tag-accent {
+  border-color: var(--color-accent-500);
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+}
+
+
+/* 07 · KPI TILE =========================================================== */
+
+.kpi {
+  padding: var(--space-5);
+}
+
+.kpi__label {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-accent-800);
+}
+
+.kpi__figure {
+  margin-top: var(--space-1);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-figure);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.kpi__delta {
+  margin-top: var(--space-1);
+  font-size: var(--size-label);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+
+/* 08 · DATA TABLE ========================================================= */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--size-body);
+}
+
+/* Sticky headers — rows scroll, the header row stays pinned just below the
+   top bar so columns are always identifiable. Opaque bg so rows don't show
+   through as they pass underneath; z-index above rows but below the top bar
+   (100). The bottom hairline is drawn with an inset box-shadow, not
+   border-bottom: in a border-collapse table the border belongs to the table
+   and would scroll away with the rows instead of sticking with the header.
+   Inside a .table-scroll wrapper (the §08a scroll box, below) the header
+   pins to that box instead; the wrapper class sets top: 0 itself. */
+.table th {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 10;
+  background: var(--color-bg);
+  padding: var(--table-cell-py) var(--table-cell-px);
+  box-shadow: inset 0 -1px 0 var(--hairline-color);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  text-align: left;
+  color: var(--color-accent-800);
+  white-space: nowrap;
+}
+
+/* Sortable headers — the sorting itself is app code (state + re-render, see
+   spec §06); the stylesheet supplies the affordance and the glyph. */
+.table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* The sort glyph is drawn from aria-sort, so the app sets one attribute and
+   nothing else — no ▲/▼ pasted into the header text to keep in sync with the
+   attribute screen readers use. Inherits the header colour. ::after comes
+   after the .th-sort button and the resize strip, so it lands exactly where
+   a pasted glyph used to. */
+.table th[aria-sort="ascending"]::after  { content: " ▲"; }
+.table th[aria-sort="descending"]::after { content: " ▼"; }
+
+/* Keyboard-operable sort. A click handler on a <th> can't be reached with
+   Tab, so the header's text sits in a <button class="th-sort"> that looks
+   exactly like the plain header — every property inherited, all button
+   chrome removed — and gets keyboard access and the focus ring for free:
+   Enter or Space sorts. The title tooltip goes on the button; the resize
+   handle stays outside it, a sibling in the <th>. */
+.th-sort {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  white-space: inherit;
+  cursor: pointer;
+}
+
+/* The scroll wrapper. §08a's fixed-layout tables overflow their frame and
+   need a scrolling box — and that box becomes the nearest scrolling ancestor,
+   so the sticky header must pin at 0 inside it: the page-scroll value floated
+   it 48px down the box with rows passing above it. Use this class for the
+   wrapper and both things are handled — the offset, and the frame padding
+   (the :has() rule further down zeroes it for a wrapped table too). Add a
+   max-height if the table should scroll vertically inside it. Never use
+   overflow: hidden here — it silently kills sticky. */
+.table-scroll { overflow: auto; }
+.table-scroll .table th { top: 0; }
+
+/* Column-resize handle (§08a) — the last child of each resizable <th>. A
+   6px strip straddling the header's right edge, invisible at rest: no
+   border, no line. The affordances are the col-resize cursor and an
+   accent-300 tint that appears on hover and stays while dragging (the app
+   toggles .is-dragging). th is position: sticky, i.e. positioned, so the
+   strip anchors to the header itself. touch-action: none keeps a finger
+   drag from scrolling the page; user-select: none keeps it from selecting
+   header text. The drag logic itself is app code. */
+.th-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.th-resize:hover,
+.th-resize.is-dragging { background: var(--color-accent-300); }
+
+.table td {
+  padding: var(--table-cell-py) var(--table-cell-px);
+  border-bottom: var(--hairline);
+  font-weight: 400;
+}
+
+.table tbody tr:last-child td { border-bottom: 0; }
+/* Accent-200, not 100. Against a plain row, 100 differs by 1.01 — the same
+   colour to the eye, so hovering a wide row gave no feedback at all. 200
+   reads clearly while staying a tint, not a selection. Wins over banding
+   (§14) on specificity — a lone class can't outrank .table tbody tr:hover —
+   so the order of the two sections doesn't matter. */
+.table tbody tr:hover { background: var(--color-accent-200); }
+
+/* Numbers right-aligned & tabular */
+.table th.num,
+.table td.num,
+.table th:not(:first-child),
+.table td:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th.text,
+.table td.text { text-align: left; font-variant-numeric: normal; }
+
+/* Empty cells — ANY column, not just names. A cell with no value carries an
+   em-dash at accent-400, which sits ~2.2:1 on the page and ~6.8:1 away from a
+   real figure: plainly visible as "nothing here", but light enough that the
+   eye skips it and lands on the numbers (rule 5, data first). Accent-800 —
+   the value used before — reads at 8.4:1, barely a step from live data, so a
+   column of blanks competed with the figures beside it. Don't go lighter than
+   this either: accent-300 falls to 1.4:1 and starts looking like a rendering
+   fault rather than a deliberate blank. */
+.nil { color: var(--color-accent-400); }
+
+/* Wrap tables in .blueprint; this keeps the frame flush */
+/* A table wrapped in a frame — directly, or through its .table-scroll
+   wrapper — sits flush against it: the frame's default --space-4 padding
+   would otherwise float the table inside its own border, and the table draws
+   its own cell padding already. This replaces the inline style="padding:0"
+   every table wrapper was carrying. */
+.blueprint:has(> .table),
+.blueprint:has(> .table-scroll) {
+  padding: 0;
+  /* Clip the rows to the frame's rounded corners: a hovered or banded last
+     row is a square box and its corners showed outside the curve. clip-path,
+     not overflow: hidden — overflow would make the frame a scroll container
+     and silently kill the sticky header. */
+  clip-path: inset(0 round var(--radius));
+}
+
+
+/* 09 · TOOLBAR & TABS ===================================================== */
+
+/* The page's toolbar row — three zones on one grid: left content (a
+   selector, status text), the page's .tabs in the centre, action buttons on
+   the right. Both outer tracks share the free space equally, so the middle
+   stays exactly centred whatever sits either side; and neither track can
+   shrink below its own content (minmax(min-content, 1fr)), so nothing can
+   ever land on top of the tabs — if a side zone is wider than its half, the
+   tabs shift off-centre instead and the zone's items wrap. The toolbar is a
+   size container: below 800px OF ITS OWN WIDTH — not the screen's, so a
+   toolbar inside a narrow panel stacks too — the three zones stack into rows
+   (the @container block below). Being a size container also makes the
+   toolbar a stacking context, so it gets a z-index between the table header
+   (10) and the top bar (100): a dropdown or popover inside the toolbar
+   floats above sticky column headers, as before. (Full-screen overlays
+   belong outside the toolbar in the markup anyway — a position: fixed
+   element nested inside it would be positioned relative to the toolbar.)
+   Controls inside are content-sized (an .input is otherwise 100% wide) and
+   status text never wraps. */
+.toolbar {
+  container-type: inline-size;
+  container-name: toolbar;
+  position: relative;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(min-content, 1fr) auto minmax(min-content, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.toolbar__left,
+.toolbar__right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.toolbar__left   { justify-self: start; }
+.toolbar__center { justify-self: center; }
+.toolbar__right  { justify-self: end; }
+
+/* In the single-row layout a control is at most about a third of the
+   toolbar (35cqw = 35% of the toolbar's width), so a dropdown with one very
+   long option name truncates instead of shoving the tabs aside and pushing
+   the buttons off the right edge. Lifted again when stacked, where a control
+   has the whole row. */
+.toolbar .input { width: auto; max-width: 35cqw; }
+.toolbar .micro { white-space: nowrap; }
+
+/* Stacked: each zone spans all three columns, so they fall into rows. (A
+   container can't restyle itself from inside its own query, so the columns
+   stay and the zones span them.) Keyed to the toolbar's own width, which is
+   what actually runs out. A control may fill the row (100cqw = the toolbar's
+   width) but never exceed it — with a plain 100% cap the row would still
+   grow to fit one long dropdown label and push past the edge. Tabs that
+   don't fit on one line wrap rather than overflow the page. */
+@container toolbar (width < 800px) {
+  .toolbar__left,
+  .toolbar__center,
+  .toolbar__right { grid-column: 1 / -1; justify-self: stretch; }
+  .toolbar .tabs { justify-content: center; flex-wrap: wrap; }
+  .toolbar .input { max-width: 100cqw; }
+}
+
+/* Small phones: tighter tab padding, so four tabs still fit on one line. */
+@container toolbar (width < 420px) {
+  .toolbar .tab { padding-inline: var(--space-3); }
+}
+
+/* Browsers without container queries (before 2023) fall back to stacking by
+   screen width instead. */
+@supports not (container-type: inline-size) {
+  @media (max-width: 799px) {
+    .toolbar { grid-template-columns: minmax(0, 1fr); }
+    .toolbar__left,
+    .toolbar__center,
+    .toolbar__right { justify-self: stretch; }
+    .toolbar .tabs { justify-content: center; flex-wrap: wrap; }
+    .toolbar .input { max-width: 100%; }
+  }
+}
+
+/* Tabs are page-local, not a shell row. They live in .toolbar__center —
+   never in a dedicated row of their own. */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: var(--hairline);
+}
+
+.tab {
+  padding: var(--space-3) var(--space-5);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--color-accent-800);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  text-decoration: none;    /* a tab that is a link keeps the tab look, not the link look */
+  cursor: pointer;
+}
+
+.tab:hover { color: var(--color-text); }
+
+/* Active: aria-selected for view tabs, aria-current for tabs that are links
+   to routes — one look for both. */
+.tab[aria-selected="true"],
+.tab[aria-current="page"] {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent-500);
+}
+
+
+/* 10 · FIELDS & INPUTS ==================================================== */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.field > label {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-label);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-accent-800);
+}
+
+/* One control height (--control-h) for text inputs and selects, so they sit
+   level with .btn in a toolbar row: with --space-2 vertical padding a 14px
+   input ran 32.6px and a select 34.6px beside 28px buttons. Vertical padding
+   is zero and the browser centres the text; the 14px text is untouched.
+   Textareas grow instead — at least two control heights. */
+.input,
+select.input,
+textarea.input {
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  line-height: 1.2;
+  border: var(--hairline);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+}
+
+textarea.input {
+  height: auto;
+  min-height: calc(var(--control-h) * 2);
+  padding-block: var(--space-2);
+  line-height: 1.5;
+}
+
+/* Accent-600, not 400. A placeholder is text you are meant to read, so it
+   needs 4.5:1 — 400 measures 2.17 and is barely legible. 400 stays the value
+   for .nil (§08), where a blank SHOULD recede; the two look similar but do
+   opposite jobs, so don't unify them. */
+.input::placeholder {
+  color: var(--color-accent-600);
+  text-transform: uppercase;
+  font-size: var(--size-label);
+  letter-spacing: var(--track-label);
+}
+
+.input:focus {
+  outline: 0;
+  border-color: var(--color-accent-500);
+  box-shadow: inset 0 0 0 1px var(--color-accent-500);
+}
+
+
+/* 11 · GRID HELPERS ======================================================= */
+
+/* The grid spaces its tiles with gap and carries the bottom margin itself;
+   a frame inside it drops its own. Otherwise the tile margin added to the
+   row gap, and a two-row KPI grid had 32.8px between rows against 19.2px
+   between columns. */
+.grid {
+  display: grid;
+  gap: var(--grid-gap);
+  margin-bottom: var(--space-4);
+}
+
+.grid > .blueprint { margin-bottom: 0; }
+
+.grid--kpi { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.grid--week { grid-template-columns: repeat(5, 1fr); }
+
+/* Layout recipes — §07 of the spec */
+.split--dashboard { display: grid; gap: var(--grid-gap); grid-template-columns: 2.1fr 1fr; }
+.split--screener  { display: grid; gap: var(--grid-gap); grid-template-columns: 260px 1fr; }
+.split--list      { display: grid; gap: var(--grid-gap); grid-template-columns: 1.5fr 1fr; }
+
+@media (max-width: 900px) {
+  .split--dashboard,
+  .split--screener,
+  .split--list { grid-template-columns: 1fr; }
+  .grid--week { grid-template-columns: repeat(2, 1fr); }
+}
+
+
+/* 12 · NUMERIC & DELTA TREATMENT ========================================== */
+
+/* .num forces a table column right with tabular figures (§08 does this for
+   every column after the first already). .figure is a heading-weight number
+   outside a KPI tile — the .kpi__figure treatment without the tile (§03 sets
+   its font). [data-num] is .num as an attribute, for generated markup. */
+.num,
+.figure,
+[data-num] {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Gains and losses are the one documented exception to "one color" — dedicated
+   green/red, not accent-derived. Nothing else is colored. */
+.gain { color: var(--color-gain); }
+.loss { color: var(--color-loss); }
+
+
+/* 13 · SCROLLBAR ========================================================== */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-surface); }
+::-webkit-scrollbar-thumb { background: var(--color-accent-300); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--color-accent-500) 60%, transparent); }
+
+/* Browsers without the WebKit pseudo-elements (Firefox) get the standard
+   properties instead. Guarded, because in Chrome setting scrollbar-color
+   would switch the 6px WebKit styling above off. */
+@supports not selector(::-webkit-scrollbar) {
+  :root {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-accent-300) var(--color-surface);
+  }
+}
+
+
+/* 14 · ROW BANDING & GROUPING =============================================
+   For tables whose rows fall into natural groups (e.g. one earnings date
+   spanning several tickers). Reuses existing tokens — no new colors:
+     - default row:        var(--color-bg)        #f2f2f3
+     - alternate band:     var(--color-surface)    #e9e9ea
+     - row hover:          var(--color-accent-200) #dbe4ee (.table tbody
+                            tr:hover in §08 — hover always wins: it outranks
+                            a lone class on specificity, and only applies on
+                            interaction)
+     - standard row rule:  var(--hairline-color)   #c9cacc (1px, .table td
+                            default from §08)
+     - group-gap rule:     var(--color-accent-500) #5980a6 (2px — heavier,
+                            drawn only where consecutive groups are NOT
+                            adjacent, e.g. a week gap between earnings dates)
+
+   Usage: assign .row-band to alternating groups (2nd, 4th, ... group in
+   sequence — not alternating individual rows), and .row-groupgap to the
+   LAST row of a group when the next group is non-adjacent by whatever
+   ordering the table uses (date, rank, etc). Both are plain utility classes,
+   not table-wide rules, because the grouping logic is data-driven and lives
+   in the page, not the stylesheet. */
+
+.row-band { background: var(--color-surface); }
+
+.row-groupgap { border-bottom: 2px solid var(--color-accent-500); }
+
+
+/* 15 · SYMBOL / TICKER LINK =============================================== */
+
+/* Every ticker symbol rendered anywhere — table cells, KPI tiles, headers,
+   detail asides — is a clickable link to its TradingView chart, opened in a
+   new tab. Never render a bare, unlinked symbol.
+     URL: https://www.tradingview.com/chart/3Ojf0qKU/?symbol=<SYMBOL>
+   (the shared chart layout with the symbol appended, case-insensitive;
+   exchange-qualified where a bare ticker is ambiguous — TWSE:2330 — from the
+   same helper Open All uses, spec §06).
+   Accent-800, the single accent value for text across the system — labels,
+   micro, table headers, tabs, field labels and tag text all use it. Don't
+   reach for 700 here: it differs from 800 by only 1.34:1, invisible at symbol
+   size. Uppercase, no underline; hover underlines and keeps the colour —
+   600 on a hovered (accent-200) row measured 4.09:1, under the 4.5 the rest
+   of the system clears, and broke the one-accent-text-value rule. */
+
+.symbol {
+  color: var(--color-accent-800);
+  font-weight: 500;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.symbol:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+
+/* 16 · COMPANY NAME CELL ================================================== */
+
+/* Long company names are shortened by a shortenCompanyName() transform in the
+   app — strip a leading "The", loop-strip trailing corporate suffixes and
+   share-class/ADR noise until stable, then cap to the first 3 words — and
+   finished visually here: the name is clipped to its cell with a trailing
+   ellipsis, and on hover it marquee-scrolls to reveal itself. The markup is
+   a .company block INSIDE the cell, wrapping a .company__inner span:
+
+     <td class="text" title="<full, unshortened name>"><div class="company"><span class="company__inner">…</span></div></td>
+
+   The title carries the full name for phones, keyboards and screen readers —
+   the marquee is mouse-only (spec §06).
+   A prefers-reduced-motion block at the end of this section switches the
+   scroll off and keeps the ellipsis (the generic §02 block is not enough). A
+   missing name makes the transform return null and the app renders an
+   em-dash (.company--null, the same treatment as any empty cell — .nil, §08). */
+
+/* THE WINDOW MEASURES ITSELF. .company is a size container, so the keyframe
+   below reads the block's own inner width as 100cqw: the pan always ends with
+   the last character exactly at the visible edge, and it stays right when a
+   column is resized (§08a) with nothing written by the app. This is why
+   .company is a <div> inside the <td> rather than the <td> itself —
+   containment has no effect on table cells. Inside a fixed-layout table the
+   wrapper fills the cell's content box, which is the window.
+
+   Back-compat: --peek-window is still honoured. An app that keeps .company
+   on the <td> must write the cell's INNER width (column width minus the two
+   --table-cell-px paddings) into --peek-window on first render and on every
+   resize; writing the column width leaves the last 20px unrevealed. */
+
+/* THE PEEK-MARQUEE PATTERN. .company is the named instance of a generic
+   treatment usable on ANY element whose text may overflow: a window (hidden
+   overflow + nowrap + ellipsis) that is a size container, an inner span
+   (inline at rest so the ellipsis can draw — an inline-block child is
+   clipped without one; inline-block only on hover so it can be transformed),
+   and on hover: ellipsis -> clip plus a translateX animation whose end
+   position is min(0px, calc(100cqw - 100%)) — 100cqw is the window's own
+   width and 100% is the span's full width, so the text slides left exactly
+   until its last character reaches the window's right edge, and the min()
+   guard clamps text that fits to zero travel, so it never animates. 6s
+   linear infinite alternate: a slow back-and-forth pan across the window,
+   NOT a looping ticker tape — the hidden tail is revealed, then the start
+   returns. Text never wraps and layout never shifts. Mouse-out removes the
+   animation; the element snaps back to the ellipsis. Give the element a
+   width (a <col>, a max-width, a grid track) — the pattern never sizes
+   itself. */
+
+.company {
+  --peek-window: 100cqw;   /* the window's own inner width; override only for a legacy <td class="company"> */
+  container-type: inline-size;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* A company column is rarely first, and §08 right-aligns every column after
+     the first with tabular figures. Names are text: the block sets its own
+     alignment, so it reads correctly whether or not the cell carries .text. */
+  text-align: left;
+  font-variant-numeric: normal;
+}
+
+/* Legacy <td class="company">: §08's per-column rule (.table td:not(:first-child))
+   outranks a lone class, so restate the alignment at matching specificity. */
+.table td.company { text-align: left; font-variant-numeric: normal; }
+
+/* Inline at rest — NOT inline-block. Chrome never draws text-overflow's
+   ellipsis for an inline-block child: the box is simply clipped at the cell
+   edge and the "…" never appears. The span becomes a box only while it pans. */
+.company__inner {
+  display: inline;
+}
+
+.company:hover { text-overflow: clip; }
+
+/* will-change only while it pans. At rest it would hold a compositor layer
+   for every cell — 500 rows, 500 layers — for an animation only the hovered
+   cell ever runs. */
+.company:hover .company__inner {
+  display: inline-block;
+  will-change: transform;
+  animation: company-marquee var(--marquee-speed) linear infinite alternate;
+}
+
+@keyframes company-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(min(0px, calc(var(--peek-window, 100cqw) - 100%))); }
+}
+
+/* Reduced motion: no pan at all. The §02 block alone would leave a 0.01ms
+   infinite animation running (a jitter, not a pause) and the hover would still
+   drop the ellipsis, so the user saw a clipped name instead of a still "…".
+   Declared after the hover rules so it wins at equal specificity. */
+@media (prefers-reduced-motion: reduce) {
+  .company:hover { text-overflow: ellipsis; }
+  .company:hover .company__inner { animation: none; }
+}
+
+/* The company column's blank is the same blank as any other — kept as a name
+   for readability at the call site, but it is just .nil (§08). */
+.company--null { color: var(--color-accent-400); }
+
+
+/* 17 · DROPZONE =========================================================== */
+
+/* The input of the Upload / analyze recipe (spec §07): a frame the user drops
+   a file or screenshot on, or clicks to browse. Three states, all on
+   existing tokens — idle: a DASHED hairline (the one dashed border in the
+   system, so a drop target reads as different from a content frame);
+   drag-over: accent-500 border + accent-100 tint (the app toggles
+   .is-dragover on dragenter/dragleave/drop); loaded: .dropzone--slim, the
+   collapsed "add another" bar that keeps the affordance without the space.
+   Label text is .micro. The rounded corners come from the §02 list. */
+.dropzone {
+  display: grid;
+  place-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8);
+  border: 1px dashed var(--hairline-color);
+  text-align: center;
+  cursor: pointer;
+  margin-bottom: var(--space-4);
+}
+
+.dropzone.is-dragover {
+  border-color: var(--color-accent-500);
+  background: var(--color-accent-100);
+}
+
+.dropzone--slim {
+  grid-auto-flow: column;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+}
+
+
+/* 18 · STATES ============================================================= */
+
+/* One look for the moments a page has nothing to show, on existing tokens
+   and components — so the apps stop each inventing their own spinner and
+   error box (spec §06, States).
+     loading:  the control is disabled and a .micro readout ("Loading…") sits
+               beside it, exactly like §06 status text. No spinner.
+     empty:    a .blueprint.state — one .micro line saying what would change
+               it ("No rows match — widen the filters") and, if there is one,
+               the button that does (.btn-ghost).
+     error:    the same frame — one .micro line naming the failure
+               ("Couldn't load prices (HTTP 502)") and a Retry .btn. Errors
+               are not red: red is for losses (rule 2).
+     invalid:  .input[aria-invalid="true"] darkens the field's border to
+               accent-800; a .micro line under the field says how to fix it,
+               linked with aria-describedby. No red here either. Declared
+               after .input:focus so an invalid field stays marked while
+               focused. */
+.state {
+  display: grid;
+  place-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8);
+  text-align: center;
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--color-accent-800);
+  box-shadow: inset 0 0 0 1px var(--color-accent-800);
+}
