@@ -1,20 +1,17 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Options Position Analyzer</title>
-    <!-- Fetched in parallel with the app's own CSS. Previously an @import at the
-         top of styles.css, which could only start after that file had been
-         downloaded and parsed — a serialised third-party hop on the critical
-         path. Same family, weights and display=swap, so rendering is unchanged. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
-    />
-    <link rel="stylesheet" href="/src/styles.css" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="only light" />
+    <title>Options Analyzer</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <!-- Platform stylesheet, served as-is from public/ so its fonts/ folder
+         resolves beside it; refreshed by public/sync-spec.sh. Inter is
+         self-hosted there — no Google Fonts request. -->
+    <link rel="stylesheet" href="/styles.css" />
+    <!-- App layer on top — Vite bundles this one. -->
+    <link rel="stylesheet" href="/src/app.css" />
   </head>
   <body>
     <div id="root"></div>
