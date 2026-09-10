@@ -1,39 +1,53 @@
 # CLAUDE.md
 
-## Response style — READ FIRST
-- **Extremely concise. Plain English.** Short sentences. Everyday words. No filler, no preamble, no jargon — if a technical term is needed, explain it in a few words.
-- Lead with the answer. Details only if asked.
-- **Any action for the user → give exact, numbered steps and bold every to-do.**
-- **Auto-merge PRs. Do NOT ask for approval.**
-- **Do NOT subscribe to PR activity after creating a PR.** No auto-watching — just create and merge. (The platform sometimes auto-subscribes on its own when a PR is created; if that happens, silently unsubscribe right away — never let this prompt for approval. Enforced via `.claude/settings.json` permissions; do not remove that entry.)
+Rules for Claude when working in this repo.
 
-## What this app is
-Reads an Interactive Brokers (IBKR) options position **screenshot**, extracts the rows with Claude vision, then shows extrinsic value + a net-position-vs-price chart.
+**Audience: a novice coder who is short on time.** Assume no jargon is understood. Assume every extra sentence costs them time.
 
-## Stack
-- Frontend: React 18 + Vite (`src/`)
-- Backend: Express (`server/index.js`) — one route `POST /api/extract`, plus public `GET /health`
-- Extraction: Anthropic Messages API (vision), model `claude-sonnet-4-6`
-- Auth: HTTP Basic on everything except `/health`, then a 30-day signed cookie
+## Permission to act
 
-## Run it
-1. **Set the env:** copy `.env.example` to `.env`, set `ANTHROPIC_API_KEY`, `APP_USERNAME`, `APP_PASSWORD`, `SECRET_KEY`
-2. **Start API:** `npm run start` (Express on :3000)
-3. **Start UI:** `npm run dev` (Vite, proxies `/api` → :3000)
-4. **Build:** `npm run build` → `dist/` (served by Express in prod)
+- **Never make changes or implement anything until I clearly tell you to.** No edits, commits, or code changes on your own initiative — wait for an explicit go-ahead.
+- **A question is only a question.** If I ask something, answer it — do not also implement a change based on it. Making the change requires a separate, explicit instruction.
 
-## Files
-- `src/App.jsx` — UI, upload/drop, options math (`parseLeg`, `netPositionAt`, `buildCurve`), chart, table
-- `server/index.js` — `/api/extract`, the extraction prompt, static serve of `dist/`
-- `vite.config.js` — dev proxy to backend
+## Workflow (once I've told you to make a change)
 
-## How it works
-1. User drops an IBKR screenshot → sent as base64 to `/api/extract`.
-2. Server asks Claude to return a JSON array of held rows (`description`, `position`, `last`).
-3. Client parses legs, computes intrinsic/extrinsic and the net-position step curve.
+- **Always auto-PR.** After pushing, open a pull request (ready for review) without being asked.
+- **Always auto-merge.** Merge the PR once it's ready — don't leave it waiting.
 
-## Rules
-- Never commit `.env` or secrets.
-- Never log credentials, the `Authorization` header, or the auth cookie.
-- Keep the extraction prompt output as **raw JSON only** (no code fences).
-- Match existing code style; keep changes minimal.
+## How to write to me
+
+- **Plain English for dummies.** Say it the way you'd say it out loud. No jargon, no CSS class names, no `§` section numbers, no code in a sentence where words will do. If a term is unavoidable, say what it means in the same breath.
+- **Fragments and outlines beat paragraphs.** Bullets over prose.
+- **Extremely concise.** No preamble, no praise, no apologies, no filler. Don't restate my question back to me. Don't explain what you're about to do — just do it and say what happened.
+- **Bold the parts that matter** so I can skim and stop reading early.
+
+Plain English applies to what you say to me. Code, commit messages, and PR descriptions still use the real names for things.
+
+## Actions you need FROM me
+
+Anything I have to **run, click, paste, or install**:
+
+- **One action per step.** Never two things in one step.
+- **Number every step with an emoji:** 1️⃣ 2️⃣ 3️⃣
+- **Bold the action word** — **Run**, **Click**, **Paste**, **Install**.
+- **Commands go in their own code block**, on their own. Never inline in a sentence.
+- ⚠️ for a warning or a choice I have to make.
+- ✅ for what success should look like.
+- **Never bury an action inside a paragraph.** If I have to hunt for it, it's wrong.
+
+Example of the shape:
+
+1️⃣ **Run** this:
+
+```sh
+npm install
+```
+
+✅ Ends with "added N packages"
+
+⚠️ If it says "permission denied", stop and tell me.
+
+## Code
+
+- Exactly **one plain-language line** saying what it does.
+- **No technical breakdown** unless I ask for one.

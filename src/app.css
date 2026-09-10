@@ -1,0 +1,193 @@
+/* ==========================================================================
+   OPTIONS ANALYZER — APP LAYER
+   Loads after the shared platform stylesheet (public/styles.css, refreshed by
+   public/sync-spec.sh) and carries only what this app adds on top of it:
+   app-specific components, plus deliberate overrides of platform defaults
+   that this app's owner picked (kept minimal — anything the platform sheet
+   already does right is not repeated here).
+   ========================================================================== */
+
+
+/* ---- KPI row — one-line tiles, owner-tuned sizes ------------------------ */
+
+/* Platform KPI stacks label over figure at 18px. This app's tiles put both on
+   one line and use the sizes its owner picked: labels 12px/500, the lead
+   (ticker) label 16px, figures 16px/600. */
+.kpi {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0;
+}
+
+.kpi__label,
+.kpi__figure { margin: 0; }
+
+.kpi__label {
+  font-weight: 500;
+  font-size: 12px;
+  white-space: nowrap;
+  /* Match the figure's line-height so tiles of mixed label sizes align. */
+  line-height: 1.1;
+}
+
+/* The spot tile's label is the ticker itself — the tile's identity. */
+.kpi__label--lead { font-size: 16px; }
+
+.kpi__figure {
+  flex: none;
+  font-size: 16px;
+  line-height: 1.1;
+}
+
+.kpi__figure--accent { color: var(--color-accent-800); }
+
+/* Marks a spot the user typed rather than one read off the screenshot. */
+.kpi__figure-note {
+  font-weight: 500;
+  font-size: var(--size-micro);
+  color: var(--color-accent-800);
+}
+
+/* Tiles size to their own content rather than equal columns, so a long label
+   never truncates; leftover space is shared out and tiles wrap when needed. */
+.app-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--grid-gap);
+  margin-bottom: var(--space-6);
+}
+
+.app-kpis > .blueprint {
+  flex: 1 0 auto;
+  margin-bottom: 0;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+
+/* ---- Gain / loss — owner keeps these bold ------------------------------- */
+
+.gain,
+.loss { font-weight: 700; }
+
+/* .table td sets font-weight 400 at higher specificity — keep gain/loss bold
+   inside table cells too. */
+.table td.gain,
+.table td.loss { font-weight: 700; }
+
+/* Spot marker on the chart — same tokens as the figures, so the dot and the
+   "net position at spot" tile can never disagree. */
+.spot-dot { fill: var(--color-accent-900); }
+.spot-dot--gain { fill: var(--color-gain); }
+.spot-dot--loss { fill: var(--color-loss); }
+
+
+/* ---- Table — put/call banding and subtotals ----------------------------- */
+
+/* Put and call rows band by leg type, on tokens only: puts get the accent
+   tint, calls the neutral surface. Hover (accent-200) always wins. */
+.table tbody tr.row-put { background: var(--color-accent-100); }
+.table tbody tr.row-call { background: var(--color-surface); }
+.table tbody tr.row-put:hover,
+.table tbody tr.row-call:hover { background: var(--color-accent-200); }
+
+/* Subtotal sitting inside the body (the puts total, under the put rows) —
+   matches the footer totals rather than the data rows around it. */
+.table tbody tr.table-subtotal td {
+  font-weight: 600;
+  border-top: var(--hairline);
+}
+.table tbody tr.table-subtotal:hover { background: transparent; }
+
+.table tfoot td {
+  font-weight: 600;
+  border-top: var(--hairline);
+  border-bottom: none;
+}
+
+/* Long tables scroll inside their frame with the header pinned; short tables
+   are unaffected. The wrapper also gives resized-wide tables a horizontal
+   scrollbar instead of spilling past the frame. */
+.table-scroll { max-height: 80vh; }
+
+
+/* ---- Top bar — data age readout ----------------------------------------- */
+
+/* Age of the position on screen. Sits in the bar's spare right-hand side, so
+   it costs the content area no height. */
+.topbar__age {
+  margin-left: auto;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--color-accent-800);
+  white-space: nowrap;
+}
+
+
+/* ---- App-specific components -------------------------------------------- */
+
+/* Panel header row — holds the panel's action, kept to the right. */
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* Asks for the spot price when the screenshot was cropped above it. Styled as
+   a prompt rather than an error: it is recoverable without re-cropping. The
+   input is the platform .input; only its width is app-specific. */
+.spot-prompt {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: var(--hairline);
+  border-color: var(--color-accent-500);
+  border-radius: var(--radius);
+  background: var(--color-accent-100);
+  font-size: 12.5px;
+  color: var(--color-accent-900);
+}
+
+.spot-prompt .input { width: 130px; }
+
+/* One symbol's KPIs + chart + table. Separated so stacked symbols read as
+   distinct blocks rather than one continuous run of panels. */
+.symbol-block + .symbol-block {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: var(--hairline);
+}
+
+/* This app's dropzone carries an icon, a title and a hint rather than the
+   single .micro line; the dashed frame and drag-over state come from the
+   platform sheet. */
+.dropzone {
+  padding: 40px 20px;
+  margin-bottom: var(--space-6);
+}
+
+.dropzone__icon { color: var(--color-accent-500); margin-bottom: var(--space-3); }
+
+.dropzone__title { margin: 0; font-size: 13px; font-weight: 500; }
+
+.dropzone__subtitle {
+  margin: var(--space-1) 0 0;
+  font-size: 11.5px;
+  color: var(--color-accent-800);
+}
+
+/* Drag-over feedback for the chart panel, which doubles as the drop target
+   once results are on screen — same look as the dropzone's own drag-over. */
+.blueprint--drop {
+  border-color: var(--color-accent-500);
+  background: var(--color-accent-100);
+}

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, Fragment } from "react";
-import { Upload, Loader2 } from "lucide-react";
+import { Upload } from "lucide-react";
 
 const ACCENT = "#5980a6";
 const ACCENT_TINT = "#dbe4ee";
@@ -351,8 +351,14 @@ function buildCurve(legs, baselineShift, sharesPerContract) {
   return { segments, domainMin, domainMax, strikes };
 }
 
+// A real minus sign (U+2212), not a hyphen — the platform's number treatment.
+const MINUS = "−";
+
+// Puts the real minus on any already-formatted number, e.g. a toFixed result.
+const fmtSigned = (v) => String(v).replace("-", MINUS);
+
 function fmtMoney(n) {
-  const sign = n < 0 ? "-" : "";
+  const sign = n < 0 ? MINUS : "";
   return `${sign}${Math.abs(Math.round(n)).toLocaleString()}`;
 }
 
@@ -363,7 +369,7 @@ function signClass(n) {
 }
 
 function fmtShort(n) {
-  const sign = n < 0 ? "-" : "";
+  const sign = n < 0 ? MINUS : "";
   const abs = Math.abs(n);
   return abs >= 1000 ? `${sign}${Math.round(abs / 1000)}K` : `${sign}${Math.round(abs)}`;
 }
@@ -538,15 +544,40 @@ function Blueprint({ children, className = "", ...rest }) {
 
 // ---------- resizable table columns (spec §08a) ----------
 
+// title feeds the native header tooltip (spec §06); numeric picks the sort
+// comparison and the first-click direction (numbers start descending, text
+// ascending — the finance default).
 const COLUMNS = [
-  { key: "strike", label: "Strike", width: 110 },
-  { key: "type", label: "Type", width: 110 },
-  { key: "qty", label: "Qty", width: 110 },
-  { key: "last", label: "Last", width: 130 },
-  { key: "intrinsic", label: "Intrinsic", width: 150 },
-  { key: "extrinsic", label: "Extrinsic", width: 150 },
-  { key: "totalExtrinsic", label: "Total extrinsic", width: 190 },
+  { key: "strike", label: "Strike", width: 110, numeric: true,
+    title: "Option strike price" },
+  { key: "type", label: "Type", width: 110, numeric: false,
+    title: "PUT or CALL" },
+  { key: "qty", label: "Qty", width: 110, numeric: true,
+    title: "Signed position — negative is short, positive is long" },
+  { key: "last", label: "Last", width: 130, numeric: true,
+    title: "Bid–ask midpoint; falls back to the last trade when a quote is missing" },
+  { key: "intrinsic", label: "Intrinsic", width: 150, numeric: true,
+    title: "Value if exercised now — how far the option is in the money" },
+  { key: "extrinsic", label: "Extrinsic", width: 150, numeric: true,
+    title: "Time value — price minus intrinsic" },
+  { key: "totalExtrinsic", label: "Total extrinsic", width: 190, numeric: true,
+    title: "Extrinsic × contracts × contract multiplier; positive is premium collected (short leg), negative premium paid (long leg)" },
 ];
+
+// The qty column shows r.position; every other key reads its own field.
+const sortValue = (row, key) => (key === "qty" ? row.position : row[key]);
+
+function sortLegRows(rows, sort) {
+  if (!sort) return rows;
+  const numeric = COLUMNS.find((c) => c.key === sort.key)?.numeric;
+  const flip = sort.dir === "ascending" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const av = sortValue(a, sort.key);
+    const bv = sortValue(b, sort.key);
+    const cmp = numeric ? av - bv : String(av).localeCompare(String(bv), undefined, { sensitivity: "base" });
+    return cmp * flip;
+  });
+}
 
 const COLUMN_WIDTHS_KEY = "options-analyzer:column-widths";
 const ROWS_KEY = "options-analyzer:rows";
@@ -620,8 +651,13 @@ function useColumnWidths() {
 
   const [activeIndex, setActiveIndex] = useState(null);
 
+  // Pointer events with capture on the handle itself (spec §08a): mouse,
+  // touch and pen all work, no window listeners, and a fast drag can't
+  // escape the strip.
   const startResize = (index, e) => {
     e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
     setActiveIndex(index);
     const startX = e.clientX;
     const startWidth = widths[index];
@@ -631,11 +667,13 @@ function useColumnWidths() {
     };
     const onUp = () => {
       setActiveIndex(null);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
     };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
   };
 
   return { widths, startResize, activeIndex };
@@ -643,18 +681,19 @@ function useColumnWidths() {
 
 // ---------- shell ----------
 
-// Copied constant, not fetched — there is no shared backend (spec §04b).
+// Copy verbatim into each app — this list is identical everywhere. Never edit it per app.
 const MODULES = [
-  { name: "Options Analyzer", url: "https://options-analyzer-production-24d8.up.railway.app/", current: true },
-  { name: "Earnings Tracker", url: "https://earnings-tracker-production-2c77.up.railway.app/#/" },
-  { name: "Custom Indexer", url: "https://indexer-production-83a6.up.railway.app/#/" },
-  { name: "Stock Screener", url: "https://parabolic-screener-production.up.railway.app/" },
-  { name: "Stock Dashboard", url: "https://stock-dashboard-server-production-6c1c.up.railway.app/" },
-  { name: "PEAD", url: "https://pead-watchlist-e1a53.up.railway.app/" },
-  { name: "AI Screener", url: "https://nc-futures-screener-server-production.up.railway.app/" },
+  { name: "Options Analyzer",   url: "https://options-analyzer-production-24d8.up.railway.app/" },
+  { name: "Earnings Tracker",   url: "https://earnings-tracker-production-2c77.up.railway.app/#/" },
+  { name: "Custom Indexer",     url: "https://indexer-production-83a6.up.railway.app/#/" },
+  { name: "Stock Screener",     url: "https://parabolic-screener-production.up.railway.app/" },
+  { name: "PRE-earnings Drift", url: "https://pre-earnings-drift-production.up.railway.app/" },
+  { name: "PEAD",               url: "https://pead-watchlist-e1a53.up.railway.app/" },
+  { name: "Taiwan Screener",    url: "https://taiwan-revenue-screener-production.up.railway.app/#/" },
 ];
 
-const CURRENT_MODULE = MODULES.find((m) => m.current);
+// The ONE line that differs per app:
+const CURRENT_MODULE = "Options Analyzer";
 
 // How old the position on screen is. Rows persist indefinitely, so without
 // this a reading from days ago is indistinguishable from one taken a minute
@@ -681,14 +720,19 @@ function DataAge({ at }) {
 function TopBar({ extractedAt }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
+  const triggerRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e) => {
       if (!wrapRef.current?.contains(e.target)) setOpen(false);
     };
+    // Escape closes AND returns focus to the button (spec §03).
     const onKey = (e) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener("mousedown", onDocClick);
     document.addEventListener("keydown", onKey);
@@ -700,29 +744,39 @@ function TopBar({ extractedAt }) {
 
   return (
     <header className="topbar">
-      <span className="topbar__brand">
-        <img src="/logo.svg" alt="NC Futures" />
-      </span>
+      {/* The brand mark links to THIS app's start page — never to a hub
+          (there is none). */}
+      <a className="topbar__brand" href="/" aria-label="NC Futures — start page">
+        <img src="/logo.svg" alt="" />
+      </a>
       <div className="topbar__modules" ref={wrapRef}>
         <button
+          ref={triggerRef}
           className="btn topbar__modules-trigger"
-          aria-haspopup="menu"
+          type="button"
           aria-expanded={open}
+          aria-controls="modules-menu"
           onClick={() => setOpen((v) => !v)}
         >
-          {CURRENT_MODULE.name} ▾
+          {CURRENT_MODULE} <span aria-hidden="true">▾</span>
         </button>
-        <div className="topbar__modules-menu blueprint blueprint--solid" role="menu" hidden={!open}>
+        {/* A disclosure, not an application menu: a plain list of links (no
+            role="menu"), so no arrow-key handling is owed. */}
+        <nav
+          id="modules-menu"
+          className="topbar__modules-menu blueprint blueprint--solid"
+          aria-label="Modules"
+          hidden={!open}
+        >
           {MODULES.map((m) =>
-            m.current ? (
-              <span key={m.name} className="topbar__modules-item" role="menuitem" aria-current="page">
+            m.name === CURRENT_MODULE ? (
+              <span key={m.name} className="topbar__modules-item" aria-current="page">
                 {m.name}
               </span>
             ) : (
               <a
                 key={m.name}
                 className="topbar__modules-item"
-                role="menuitem"
                 target="_blank"
                 rel="noopener"
                 href={m.url}
@@ -731,7 +785,7 @@ function TopBar({ extractedAt }) {
               </a>
             )
           )}
-        </div>
+        </nav>
       </div>
       <DataAge at={extractedAt} />
     </header>
@@ -763,7 +817,7 @@ function SpotPrompt({ ticker, onSubmit }) {
       </label>
       <input
         id={`spot-${ticker}`}
-        className="spot-prompt__input"
+        className="input"
         inputMode="decimal"
         autoComplete="off"
         placeholder="e.g. 4655.3"
@@ -779,9 +833,14 @@ function SpotPrompt({ ticker, onSubmit }) {
 
 // One symbol's block: its KPI row, its chart, its table. The chart panel is a
 // drop target like the others, so a screenshot can be dropped anywhere.
-function PositionSection({ view, columnWidths, startResize, activeColumn, dragOver, onDragOver, onDragLeave, onDrop }) {
+function PositionSection({ view, columnWidths, startResize, activeColumn, sort, onSort, dragOver, onDragOver, onDragLeave, onDrop }) {
   const { ticker, spotPrice, spotIsTyped, legRows, putsTotal, callsTotal, grandTotal, curve, netAtSpot, neutralPrice } =
     view;
+
+  const sortedRows = sortLegRows(legRows, sort);
+  // The inline puts subtotal follows the puts wherever a sort puts them —
+  // after the LAST put row, exactly once.
+  const lastPutIndex = sortedRows.map((r) => r.type).lastIndexOf("PUT");
 
   return (
     <section className="symbol-block">
@@ -843,6 +902,10 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, dragOv
       </Blueprint>
 
       <Blueprint>
+        {/* .table-scroll is the scroll box (spec §08a): resized-wide tables
+            scroll horizontally instead of spilling past the frame, and the
+            header pins at the box's own top for long tables. */}
+        <div className="table-scroll">
         <table
           className="table"
           style={{ tableLayout: "fixed", width: `max(100%, ${columnWidths.reduce((a, b) => a + b, 0)}px)` }}
@@ -855,31 +918,39 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, dragOv
           <thead>
             <tr>
               {COLUMNS.map((c, i) => (
-                <th key={c.key} className={`is-resizable${c.key === "type" ? " text" : ""}`}>
-                  {c.label}
+                <th
+                  key={c.key}
+                  className={`sortable${c.key === "type" ? " text" : ""}`}
+                  aria-sort={sort?.key === c.key ? sort.dir : undefined}
+                >
+                  {/* Header text in a button so Tab reaches it and Enter or
+                      Space sorts; the native title is the column's tooltip. */}
+                  <button className="th-sort" type="button" title={c.title} onClick={() => onSort(c.key)}>
+                    {c.label}
+                  </button>
                   <span
-                    className={`resize-handle${activeColumn === i ? " resize-handle--active" : ""}`}
-                    onMouseDown={(e) => startResize(i, e)}
+                    className={`th-resize${activeColumn === i ? " is-dragging" : ""}`}
+                    onPointerDown={(e) => startResize(i, e)}
                   />
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {legRows.map((r, i) => (
-              <Fragment key={i}>
+            {sortedRows.map((r, i) => (
+              <Fragment key={`${r.type}-${r.strike}-${r.position}`}>
                 <tr className={r.type === "PUT" ? "row-put" : "row-call"}>
                   <td>{r.strike}</td>
                   <td className="text">{r.type}</td>
-                  <td>{r.position}</td>
-                  <td>{r.last.toFixed(2)}</td>
-                  <td>{r.intrinsic.toFixed(2)}</td>
-                  <td>{r.extrinsic.toFixed(2)}</td>
+                  <td>{fmtSigned(r.position)}</td>
+                  <td>{fmtSigned(r.last.toFixed(2))}</td>
+                  <td>{fmtSigned(r.intrinsic.toFixed(2))}</td>
+                  <td>{fmtSigned(r.extrinsic.toFixed(2))}</td>
                   <td className={signClass(r.totalExtrinsic)}>{fmtMoney(r.totalExtrinsic)}</td>
                 </tr>
                 {/* Puts subtotal sits with the puts rather than in the footer;
                     the calls subtotal already falls directly under the calls. */}
-                {r.type === "PUT" && legRows[i + 1]?.type !== "PUT" && (
+                {i === lastPutIndex && (
                   <tr className="table-subtotal">
                     <td colSpan={6} className={signClass(putsTotal)}>Puts total extrinsic</td>
                     <td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td>
@@ -893,6 +964,7 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, dragOv
             <tr><td colSpan={6} className={signClass(grandTotal)}>Total extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
           </tfoot>
         </table>
+        </div>
       </Blueprint>
     </section>
   );
@@ -912,13 +984,32 @@ export default function OptionsPositionAnalyzer() {
   const [manualSpots, setManualSpots] = useState(loadStoredSpots);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // The images behind the last failed read, so the error state's Retry can
+  // re-run them without another drop.
+  const [retryFiles, setRetryFiles] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  // One sort for every section's table, like the shared column widths.
+  const [sort, setSort] = useState(null);
   const inputRef = useRef(null);
   const { widths: columnWidths, startResize, activeIndex: activeColumn } = useColumnWidths();
+
+  // First click sorts a numeric column descending (biggest first) and a text
+  // column ascending; clicking the same header again flips it.
+  const toggleSort = useCallback((key) => {
+    setSort((prev) => {
+      if (prev?.key === key) {
+        return { key, dir: prev.dir === "descending" ? "ascending" : "descending" };
+      }
+      const numeric = COLUMNS.find((c) => c.key === key)?.numeric;
+      return { key, dir: numeric ? "descending" : "ascending" };
+    });
+  }, []);
 
   const handleFiles = useCallback(async (files) => {
     const images = files.filter((f) => f.type.startsWith("image/"));
     if (images.length === 0) {
+      // Nothing was attempted, so there is nothing for Retry to redo.
+      setRetryFiles(null);
       setError(
         "No image file found in that drop. Make sure you're dragging a saved screenshot file (not an image from inside a webpage or chat window) — or copy the screenshot and paste it here with Ctrl/Cmd+V."
       );
@@ -942,11 +1033,15 @@ export default function OptionsPositionAnalyzer() {
       // A successful call that yields nothing used to leave the dropzone sitting
       // there with no message, which reads as "the drop didn't register".
       if (extracted === 0) {
+        setRetryFiles(images);
         setError(
           "Read that screenshot, but found no position rows in it. Check the table is fully visible — including the Position column — and that at least one row has a position."
         );
+      } else {
+        setRetryFiles(null);
       }
     } catch (e) {
+      setRetryFiles(images);
       // Only the "model couldn't parse the image" case is actually about crop
       // quality. Everything else — a bad key, a rate limit, an oversized image —
       // has a real reason from the server, and hiding it behind crop advice
@@ -1032,12 +1127,10 @@ export default function OptionsPositionAnalyzer() {
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
           onClick={() => inputRef.current.click()}
-          className={`dropzone ${dragOver ? "dropzone--active" : ""}`}
+          className={`dropzone ${dragOver ? "is-dragover" : ""}`}
         >
           {loading ? (
-            <div className="dropzone__loading">
-              <Loader2 size={16} className="spin" /> Reading screenshot…
-            </div>
+            <span className="micro">Reading screenshot…</span>
           ) : (
             <div>
               <Upload size={22} className="dropzone__icon" />
@@ -1048,7 +1141,24 @@ export default function OptionsPositionAnalyzer() {
         </div>
       )}
 
-      {error ? <p className="app-error">{error}</p> : loadIssue && <p className="app-error">{loadIssue}</p>}
+      {/* One look for every failure (spec §06 States): a framed line, not red
+          — red is for losses — plus Retry when there is a read to redo. */}
+      {error ? (
+        <div className="blueprint state">
+          <span className="micro">{error}</span>
+          {retryFiles && (
+            <button className="btn" type="button" onClick={() => handleFiles(retryFiles)}>
+              Retry
+            </button>
+          )}
+        </div>
+      ) : (
+        loadIssue && (
+          <div className="blueprint state">
+            <span className="micro">{loadIssue}</span>
+          </div>
+        )
+      )}
 
       {!error &&
         awaitingSpot.map((v) => <SpotPrompt key={v.ticker} ticker={v.ticker} onSubmit={setSpot} />)}
@@ -1062,7 +1172,7 @@ export default function OptionsPositionAnalyzer() {
               still feedback during the wait without costing a row otherwise. */}
           {loading && (
             <div className="panel-head">
-              <span className="dropzone__loading"><Loader2 size={12} className="spin" /> Reading…</span>
+              <span className="micro">Reading…</span>
             </div>
           )}
 
@@ -1073,6 +1183,8 @@ export default function OptionsPositionAnalyzer() {
               columnWidths={columnWidths}
               startResize={startResize}
               activeColumn={activeColumn}
+              sort={sort}
+              onSort={toggleSort}
               dragOver={dragOver}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
