@@ -8,38 +8,12 @@
    ========================================================================== */
 
 
-/* ---- KPI row — one-line tiles, owner-tuned sizes ------------------------ */
+/* ---- KPI row ------------------------------------------------------------ */
 
-/* Platform KPI stacks label over figure at 18px. This app's tiles put both on
-   one line and use the sizes its owner picked: labels 12px/500, the lead
-   (ticker) label 16px, figures 16px/600. */
-.kpi {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: 0;
-}
-
+/* Tiles are the platform's: label above figure, platform sizes. Only the
+   paragraph margins need clearing — the app renders both as <p>. */
 .kpi__label,
 .kpi__figure { margin: 0; }
-
-.kpi__label {
-  font-weight: 500;
-  font-size: 12px;
-  white-space: nowrap;
-  /* Match the figure's line-height so tiles of mixed label sizes align. */
-  line-height: 1.1;
-}
-
-/* The spot tile's label is the ticker itself — the tile's identity. */
-.kpi__label--lead { font-size: 16px; }
-
-.kpi__figure {
-  flex: none;
-  font-size: 16px;
-  line-height: 1.1;
-}
 
 .kpi__figure--accent { color: var(--color-accent-800); }
 
@@ -62,8 +36,6 @@
 .app-kpis > .blueprint {
   flex: 1 0 auto;
   margin-bottom: 0;
-  padding-top: var(--space-2);
-  padding-bottom: var(--space-2);
 }
 
 
@@ -139,25 +111,21 @@
   gap: var(--space-3);
 }
 
-/* Asks for the spot price when the screenshot was cropped above it. Styled as
-   a prompt rather than an error: it is recoverable without re-cropping. The
-   input is the platform .input; only its width is app-specific. */
+/* Asks for the spot price when the screenshot was cropped above it. The frame
+   is the platform's tinted blueprint (.blueprint.blueprint--tint) — a prompt
+   rather than an error, since it is recoverable without re-cropping. Only the
+   row layout and the input width are app-specific. */
 .spot-prompt {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-3);
-  margin-bottom: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  border: var(--hairline);
-  border-color: var(--color-accent-500);
-  border-radius: var(--radius);
-  background: var(--color-accent-100);
-  font-size: 12.5px;
-  color: var(--color-accent-900);
 }
 
 .spot-prompt .input { width: 130px; }
+
+/* The "that isn't a price" hint, under the field once it has been flagged. */
+.spot-prompt__error { flex-basis: 100%; }
 
 /* One symbol's KPIs + chart + table. Separated so stacked symbols read as
    distinct blocks rather than one continuous run of panels. */
