@@ -320,6 +320,41 @@ function contractSpec(ticker) {
     : { dollarMultiplier: 100, sharesPerContract: 100 };
 }
 
+// Which venue each futures root trades on, for the chart link below. A bare
+// futures root is not just ambiguous on TradingView, it is usually wrong —
+// "ES" resolves to Eversource Energy, "CC" to a stock — so a root has to be
+// qualified before it names the contract the position is actually in.
+const FUTURES_EXCHANGES = {
+  ES: "CME_MINI", MES: "CME_MINI", NQ: "CME_MINI", MNQ: "CME_MINI",
+  RTY: "CME_MINI", M2K: "CME_MINI", YM: "CBOT_MINI", MYM: "CBOT_MINI",
+  NKD: "CME", NIY: "CME", VXM: "CFE",
+  BTC: "CME", MBT: "CME", ETH: "CME", MET: "CME",
+  CL: "NYMEX", MCL: "NYMEX", NG: "NYMEX", MNG: "NYMEX", RB: "NYMEX",
+  HO: "NYMEX", BZ: "NYMEX", QM: "NYMEX", QG: "NYMEX", PL: "NYMEX", PA: "NYMEX",
+  GC: "COMEX", MGC: "COMEX", SI: "COMEX", SIL: "COMEX", HG: "COMEX",
+  QC: "COMEX", QI: "COMEX", QO: "COMEX",
+  ZC: "CBOT", ZW: "CBOT", ZS: "CBOT", ZM: "CBOT", ZL: "CBOT", ZO: "CBOT",
+  ZR: "CBOT", ZT: "CBOT", ZF: "CBOT", ZN: "CBOT", ZB: "CBOT", UB: "CBOT",
+  TN: "CBOT", ZQ: "CBOT",
+  KC: "ICEUS", CC: "ICEUS", CT: "ICEUS", SB: "ICEUS", OJ: "ICEUS", DX: "ICEUS",
+  GF: "CME", LE: "CME", HE: "CME", LBS: "CME",
+  "6E": "CME", M6E: "CME", "6B": "CME", M6B: "CME", "6J": "CME", "6A": "CME",
+  M6A: "CME", "6C": "CME", "6S": "CME", "6M": "CME", "6N": "CME",
+  GE: "CME", SR3: "CME",
+};
+
+// The one place a ticker becomes a TradingView symbol, so every link that
+// shows a symbol resolves to the same chart (spec §06). A futures root gets
+// the continuous front-month contract ("1!") and its venue where we know it;
+// a root we price as a future but can't place still gets "1!", which at least
+// says "futures", never a same-named stock. Everything else is an equity and
+// passes through as-is.
+function tvSymbol(ticker) {
+  if (!(ticker in FUTURES_MULTIPLIERS)) return ticker.toLowerCase();
+  const exchange = FUTURES_EXCHANGES[ticker];
+  return exchange ? `${exchange}:${ticker}1!` : `${ticker}1!`;
+}
+
 function netPositionAt(legs, baselineShift, price, sharesPerContract) {
   let v = baselineShift || 0;
   for (const leg of legs) {
@@ -390,8 +425,12 @@ function fmt32(price) {
   return `${whole.toLocaleString()}'${String(ticks).padStart(2, "0")}`;
 }
 
+// Two decimals, the platform's price treatment (spec §06) — treasuries keep
+// their own tick notation instead, which is how they are quoted.
 function fmtPrice(price, ticker) {
-  return TICK32_TICKERS.has(ticker) ? fmt32(price) : price.toLocaleString();
+  return TICK32_TICKERS.has(ticker)
+    ? fmt32(price)
+    : price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Treasury OPTION prices tick in 64ths — "16/64", the way the quote screen
@@ -845,15 +884,24 @@ function TopBar({ extractedAt }) {
 // section priced at 46.
 function SpotPrompt({ ticker, onSubmit }) {
   const [value, setValue] = useState("");
+  // An entry that isn't a usable price used to be dropped in silence, leaving
+  // the prompt sitting there as if nothing had been typed (spec §06 States).
+  const [invalid, setInvalid] = useState(false);
 
   const apply = () => {
     const price = Number(value);
-    if (Number.isFinite(price) && price > 0) onSubmit(ticker, price);
+    if (Number.isFinite(price) && price > 0) {
+      setInvalid(false);
+      onSubmit(ticker, price);
+    } else {
+      // An empty field is "not filled in yet", not a mistake.
+      setInvalid(value.trim() !== "");
+    }
   };
 
   return (
     <form
-      className="spot-prompt"
+      className="spot-prompt blueprint blueprint--tint"
       onSubmit={(e) => {
         e.preventDefault();
         apply();
@@ -870,9 +918,20 @@ function SpotPrompt({ ticker, onSubmit }) {
         autoComplete="off"
         placeholder="e.g. 4655.3"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? `spot-${ticker}-err` : undefined}
+        onChange={(e) => {
+          setValue(e.target.value);
+          // Clear the flag as soon as they start fixing it.
+          if (invalid) setInvalid(false);
+        }}
         onBlur={apply}
       />
+      {invalid && (
+        <span id={`spot-${ticker}-err`} className="micro spot-prompt__error">
+          Enter a price above zero, e.g. 4655.3
+        </span>
+      )}
     </form>
   );
 }
@@ -896,31 +955,27 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, sort, 
   return (
     <section className="symbol-block">
       <div className="app-kpis">
-        <Blueprint>
-          <div className="kpi">
-            <p className="kpi__label kpi__label--lead">
-              <a
-                className="symbol"
-                href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${encodeURIComponent(ticker.toLowerCase())}`}
-                target="_blank"
-                rel="noopener"
-              >
-                {ticker}
-              </a>
-            </p>
-            {/* Flagged when typed, so an entered price is never mistaken for
-                one read off the screenshot. */}
-            <p className="kpi__figure" title={spotIsTyped ? "Price you entered, not read from the screenshot" : undefined}>
-              {fmtPrice(spotPrice, ticker)}
-              {spotIsTyped && <span className="kpi__figure-note"> (entered)</span>}
-            </p>
-          </div>
+        <Blueprint className="kpi">
+          <p className="kpi__label">
+            <a
+              className="symbol"
+              href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${encodeURIComponent(tvSymbol(ticker))}`}
+              target="_blank"
+              rel="noopener"
+            >
+              {ticker}
+            </a>
+          </p>
+          {/* Flagged when typed, so an entered price is never mistaken for
+              one read off the screenshot. */}
+          <p className="kpi__figure" title={spotIsTyped ? "Price you entered, not read from the screenshot" : undefined}>
+            {fmtPrice(spotPrice, ticker)}
+            {spotIsTyped && <span className="kpi__figure-note"> (entered)</span>}
+          </p>
         </Blueprint>
-        <Blueprint>
-          <div className="kpi">
-            <p className="kpi__label">Net position at spot</p>
-            <p className={`kpi__figure ${signClass(netAtSpot)}`}>{fmtMoney(netAtSpot)}</p>
-          </div>
+        <Blueprint className="kpi">
+          <p className="kpi__label">Net position at spot</p>
+          <p className={`kpi__figure ${signClass(netAtSpot)}`}>{fmtMoney(netAtSpot)}</p>
         </Blueprint>
         {/* The three extrinsic totals differ only in label and value. */}
         {[
@@ -928,11 +983,9 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, sort, 
           ["Calls total extrinsic", callsTotal],
           ["Total extrinsic", grandTotal],
         ].map(([label, total]) => (
-          <Blueprint key={label}>
-            <div className="kpi">
-              <p className={`kpi__label ${signClass(total)}`}>{label}</p>
-              <p className={`kpi__figure ${signClass(total)}`}>{fmtMoney(total)}</p>
-            </div>
+          <Blueprint key={label} className="kpi">
+            <p className={`kpi__label ${signClass(total)}`}>{label}</p>
+            <p className={`kpi__figure ${signClass(total)}`}>{fmtMoney(total)}</p>
           </Blueprint>
         ))}
       </div>

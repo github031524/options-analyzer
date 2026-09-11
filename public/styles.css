@@ -99,6 +99,18 @@
   --color-gain:   #206f31;
   --color-loss:   #b42d36;
 
+  /* AM/PM report-time tags — the second documented break from "one color"
+     (spec §01 rule 2, §06). Same three-step shape as the accent tag: 100
+     fill, 500 border, 800 text. Text on its own fill: 8.35:1 amber, 8.77:1
+     indigo; borders 3.06:1 and 5.02:1 against the page. For .tag-am and
+     .tag-pm only — nothing else in the system is amber or indigo. */
+  --color-am-100: #faefd2;
+  --color-am-500: #b8800f;
+  --color-am-800: #5f3f00;
+  --color-pm-100: #e9e8f7;
+  --color-pm-500: #5d5bc2;
+  --color-pm-800: #37357f;
+
   /* Hairline — the only border in the system */
   --hairline-color: #c9cacc;
   --hairline: 1px solid var(--hairline-color);
@@ -143,9 +155,6 @@
   --gutter: clamp(16px, 3vw, 32px);
   --grid-gap: clamp(12px, 1.5vw, 20px);
   --topbar-h: 48px;
-
-  /* Company-cell marquee (§16) — the duration of one pan; tune per app */
-  --marquee-speed: 6s;
 }
 
 
@@ -209,8 +218,7 @@ a:hover { text-decoration-thickness: 2px; }
 
 /* Reduced motion: every animation and transition collapses to one instant
    frame, and smooth scrolling is off. Looping animations must also be told to
-   run once — a 0.01ms INFINITE animation is a jitter, not a pause. The company
-   marquee (§16) additionally switches itself off and keeps its ellipsis. */
+   run once — a 0.01ms INFINITE animation is a jitter, not a pause. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -555,6 +563,21 @@ a.topbar__modules-item:hover { background: var(--color-accent-100); }
   border-color: var(--color-accent-500);
   background: var(--color-accent-100);
   color: var(--color-accent-800);
+}
+
+/* AM/PM report-time tags (spec §06): amber for AM, indigo for PM — the one
+   place a non-accent hue appears. They stand out because nothing else on the
+   page shares these hues; never reuse the tokens elsewhere. */
+.tag-am {
+  border-color: var(--color-am-500);
+  background: var(--color-am-100);
+  color: var(--color-am-800);
+}
+
+.tag-pm {
+  border-color: var(--color-pm-500);
+  background: var(--color-pm-100);
+  color: var(--color-pm-800);
 }
 
 
@@ -1059,51 +1082,25 @@ textarea.input {
    app — strip a leading "The", loop-strip trailing corporate suffixes and
    share-class/ADR noise until stable, then cap to the first 3 words — and
    finished visually here: the name is clipped to its cell with a trailing
-   ellipsis, and on hover it marquee-scrolls to reveal itself. The markup is
-   a .company block INSIDE the cell, wrapping a .company__inner span:
+   ellipsis. Nothing moves on hover. The markup is a .company block INSIDE
+   the cell:
 
-     <td class="text" title="<full, unshortened name>"><div class="company"><span class="company__inner">…</span></div></td>
+     <td class="text" title="<full, unshortened name>"><div class="company">…</div></td>
 
-   The title carries the full name for phones, keyboards and screen readers —
-   the marquee is mouse-only (spec §06).
-   A prefers-reduced-motion block at the end of this section switches the
-   scroll off and keeps the ellipsis (the generic §02 block is not enough). A
-   missing name makes the transform return null and the app renders an
-   em-dash (.company--null, the same treatment as any empty cell — .nil, §08). */
+   The title carries the full, unshortened name: the browser shows it as a
+   native tooltip on hover, a long-press shows it on a phone, and a screen
+   reader reads it (spec §06). It is the only way the rest of a truncated
+   name is revealed — the former hover marquee is gone; the tooltip shows
+   more (the full name, not the shortened one), sooner, and to everyone.
+   A missing name makes the transform return null and the app renders an
+   em-dash (.company--null, the same treatment as any empty cell — .nil, §08).
 
-/* THE WINDOW MEASURES ITSELF. .company is a size container, so the keyframe
-   below reads the block's own inner width as 100cqw: the pan always ends with
-   the last character exactly at the visible edge, and it stays right when a
-   column is resized (§08a) with nothing written by the app. This is why
-   .company is a <div> inside the <td> rather than the <td> itself —
-   containment has no effect on table cells. Inside a fixed-layout table the
-   wrapper fills the cell's content box, which is the window.
-
-   Back-compat: --peek-window is still honoured. An app that keeps .company
-   on the <td> must write the cell's INNER width (column width minus the two
-   --table-cell-px paddings) into --peek-window on first render and on every
-   resize; writing the column width leaves the last 20px unrevealed. */
-
-/* THE PEEK-MARQUEE PATTERN. .company is the named instance of a generic
-   treatment usable on ANY element whose text may overflow: a window (hidden
-   overflow + nowrap + ellipsis) that is a size container, an inner span
-   (inline at rest so the ellipsis can draw — an inline-block child is
-   clipped without one; inline-block only on hover so it can be transformed),
-   and on hover: ellipsis -> clip plus a translateX animation whose end
-   position is min(0px, calc(100cqw - 100%)) — 100cqw is the window's own
-   width and 100% is the span's full width, so the text slides left exactly
-   until its last character reaches the window's right edge, and the min()
-   guard clamps text that fits to zero travel, so it never animates. 6s
-   linear infinite alternate: a slow back-and-forth pan across the window,
-   NOT a looping ticker tape — the hidden tail is revealed, then the start
-   returns. Text never wraps and layout never shifts. Mouse-out removes the
-   animation; the element snaps back to the ellipsis. Give the element a
-   width (a <col>, a max-width, a grid track) — the pattern never sizes
-   itself. */
+   The block never sizes itself: give the column a width (a <col> in a
+   fixed-layout table, §08a) or a long name widens the cell instead of
+   truncating. Legacy: a .company__inner span left over from the marquee is
+   inert — no rule targets it — and can stay or go. */
 
 .company {
-  --peek-window: 100cqw;   /* the window's own inner width; override only for a legacy <td class="company"> */
-  container-type: inline-size;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1117,38 +1114,6 @@ textarea.input {
 /* Legacy <td class="company">: §08's per-column rule (.table td:not(:first-child))
    outranks a lone class, so restate the alignment at matching specificity. */
 .table td.company { text-align: left; font-variant-numeric: normal; }
-
-/* Inline at rest — NOT inline-block. Chrome never draws text-overflow's
-   ellipsis for an inline-block child: the box is simply clipped at the cell
-   edge and the "…" never appears. The span becomes a box only while it pans. */
-.company__inner {
-  display: inline;
-}
-
-.company:hover { text-overflow: clip; }
-
-/* will-change only while it pans. At rest it would hold a compositor layer
-   for every cell — 500 rows, 500 layers — for an animation only the hovered
-   cell ever runs. */
-.company:hover .company__inner {
-  display: inline-block;
-  will-change: transform;
-  animation: company-marquee var(--marquee-speed) linear infinite alternate;
-}
-
-@keyframes company-marquee {
-  from { transform: translateX(0); }
-  to   { transform: translateX(min(0px, calc(var(--peek-window, 100cqw) - 100%))); }
-}
-
-/* Reduced motion: no pan at all. The §02 block alone would leave a 0.01ms
-   infinite animation running (a jitter, not a pause) and the hover would still
-   drop the ellipsis, so the user saw a clipped name instead of a still "…".
-   Declared after the hover rules so it wins at equal specificity. */
-@media (prefers-reduced-motion: reduce) {
-  .company:hover { text-overflow: ellipsis; }
-  .company:hover .company__inner { animation: none; }
-}
 
 /* The company column's blank is the same blank as any other — kept as a name
    for readability at the call site, but it is just .nil (§08). */
