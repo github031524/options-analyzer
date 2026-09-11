@@ -394,6 +394,14 @@ function fmtPrice(price, ticker) {
   return TICK32_TICKERS.has(ticker) ? fmt32(price) : price.toLocaleString();
 }
 
+// Treasury OPTION prices tick in 64ths — "16/64", the way the quote screen
+// writes them. A bid-ask mid can land between ticks, shown as "30.5/64".
+function fmt64(price) {
+  const sign = price < 0 ? MINUS : "";
+  const n = Math.round(Math.abs(price) * 64 * 10) / 10;
+  return `${sign}${n}/64`;
+}
+
 function fmtShort(n) {
   const sign = n < 0 ? MINUS : "";
   const abs = Math.abs(n);
@@ -875,6 +883,9 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, sort, 
   // The inline puts subtotal follows the puts wherever a sort puts them —
   // after the LAST put row, exactly once.
   const lastPutIndex = sortedRows.map((r) => r.type).lastIndexOf("PUT");
+  // Option-price columns read in the symbol's own tick language: 64ths for
+  // treasuries, decimals for everything else.
+  const px = TICK32_TICKERS.has(ticker) ? fmt64 : (v) => fmtSigned(v.toFixed(2));
 
   return (
     <section className="symbol-block">
@@ -977,9 +988,9 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, sort, 
                   <td>{r.strike}</td>
                   <td className="text">{r.type}</td>
                   <td>{fmtSigned(r.position)}</td>
-                  <td>{fmtSigned(r.last.toFixed(2))}</td>
-                  <td>{fmtSigned(r.intrinsic.toFixed(2))}</td>
-                  <td>{fmtSigned(r.extrinsic.toFixed(2))}</td>
+                  <td>{px(r.last)}</td>
+                  <td>{px(r.intrinsic)}</td>
+                  <td>{px(r.extrinsic)}</td>
                   <td className={signClass(r.totalExtrinsic)}>{fmtMoney(r.totalExtrinsic)}</td>
                 </tr>
                 {/* Puts subtotal sits with the puts rather than in the footer;
