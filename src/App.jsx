@@ -378,6 +378,22 @@ function signClass(n) {
   return "kpi__figure--accent";
 }
 
+// Treasury futures quote in points and 32nds — show their prices the way the
+// quote screen writes them ("106'24") instead of the decimal they equal.
+const TICK32_TICKERS = new Set(["ZT", "ZF", "ZN", "TN", "ZB", "UB"]);
+
+// 106.75 → "106'24", rounded to the nearest 1/32 tick.
+function fmt32(price) {
+  const whole = Math.floor(price);
+  const ticks = Math.round((price - whole) * 32);
+  if (ticks === 32) return `${(whole + 1).toLocaleString()}'00`;
+  return `${whole.toLocaleString()}'${String(ticks).padStart(2, "0")}`;
+}
+
+function fmtPrice(price, ticker) {
+  return TICK32_TICKERS.has(ticker) ? fmt32(price) : price.toLocaleString();
+}
+
 function fmtShort(n) {
   const sign = n < 0 ? MINUS : "";
   const abs = Math.abs(n);
@@ -526,9 +542,15 @@ function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
             x={xScale(neutralPrice)} y={mT - 4}
             textAnchor="middle" fontSize="10.5" fill={ACCENT} fontFamily="Inter, sans-serif"
           >
-            {/* Whole points are plenty at index-sized prices, but on a
-                bond-priced underlying "107" hides 11 ticks — show cents. */}
-            {`Δ0 ${neutralPrice.toLocaleString(undefined, { maximumFractionDigits: neutralPrice < 1000 ? 2 : 0 })}`}
+            {/* Treasuries read in ticks ("107'11", nearest 1/32), matching
+                the quote screen. Elsewhere, whole points are plenty at
+                index-sized prices but hide too much under 1,000 — show
+                cents there. */}
+            {`Δ0 ${
+              TICK32_TICKERS.has(ticker)
+                ? fmt32(neutralPrice)
+                : neutralPrice.toLocaleString(undefined, { maximumFractionDigits: neutralPrice < 1000 ? 2 : 0 })
+            }`}
           </text>
         </g>
       )}
@@ -872,7 +894,7 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, sort, 
             {/* Flagged when typed, so an entered price is never mistaken for
                 one read off the screenshot. */}
             <p className="kpi__figure" title={spotIsTyped ? "Price you entered, not read from the screenshot" : undefined}>
-              {spotPrice.toLocaleString()}
+              {fmtPrice(spotPrice, ticker)}
               {spotIsTyped && <span className="kpi__figure-note"> (entered)</span>}
             </p>
           </div>
