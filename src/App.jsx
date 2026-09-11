@@ -527,7 +527,10 @@ function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
         <text x={mL - 10} y={yScale(yMin) + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(yMin)}</text>
       )}
       {strikes.map((k) => (
-        <text key={k} x={xScale(k)} y={strikeLabelY} textAnchor="middle" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{k}</text>
+        <text key={k} x={xScale(k)} y={strikeLabelY} textAnchor="middle" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
+          {/* Treasuries label the axis in ticks too: 106.5 → "106'16". */}
+          {TICK32_TICKERS.has(ticker) ? fmt32(k) : k}
+        </text>
       ))}
       {/* Net position value for each step, centered above its own segment. */}
       {segments.map((s, i) => (
