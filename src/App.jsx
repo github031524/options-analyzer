@@ -490,7 +490,10 @@ function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
         <circle cx={hover.x} cy={yScale(hover.netPosition)} r="3.5" fill={ACCENT} stroke="#fff" strokeWidth="1.5" />
         <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="3" fill="#fff" stroke={HAIRLINE} strokeWidth="1" />
         <text x={tipX + 8} y={tipY + 16} fontSize="10.5" fontWeight="600" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
-          {hover.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          {/* Treasuries hover in ticks too, rounded to the nearest 1/32. */}
+          {TICK32_TICKERS.has(ticker)
+            ? fmt32(hover.price)
+            : hover.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
         </text>
         <text x={tipX + 8} y={tipY + 30} fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
           {fmtMoney(hover.netPosition)}
