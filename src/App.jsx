@@ -263,6 +263,9 @@ function buildSymbolViews(rawRows, manualSpots = {}) {
     const putsTotal = legRows.filter((r) => r.type === "PUT").reduce((s, r) => s + r.totalExtrinsic, 0);
     const callsTotal = legRows.filter((r) => r.type === "CALL").reduce((s, r) => s + r.totalExtrinsic, 0);
     const ready = spotPrice != null && legRows.length > 0;
+    // Computed before the curve so the chart's domain can stretch to keep the
+    // Δ0 marker on screen when it falls past the strike range.
+    const neutralPrice = ready ? deltaNeutralPrice(legRows, baselineShift, sharesPerContract, spotPrice) : null;
 
     return {
       ticker,
@@ -271,9 +274,9 @@ function buildSymbolViews(rawRows, manualSpots = {}) {
       putsTotal,
       callsTotal,
       grandTotal: putsTotal + callsTotal,
-      curve: ready ? buildCurve(legRows, baselineShift, sharesPerContract) : null,
+      curve: ready ? buildCurve(legRows, baselineShift, sharesPerContract, neutralPrice) : null,
       netAtSpot: ready ? netPositionAt(legRows, baselineShift, spotPrice, sharesPerContract) : null,
-      neutralPrice: ready ? deltaNeutralPrice(legRows, baselineShift, sharesPerContract, spotPrice) : null,
+      neutralPrice,
       ready,
       spotIsTyped,
       // Missing spot is recoverable by typing one, so it gets a prompt rather
@@ -333,14 +336,21 @@ function netPositionAt(legs, baselineShift, price, sharesPerContract) {
   return v;
 }
 
-function buildCurve(legs, baselineShift, sharesPerContract) {
+function buildCurve(legs, baselineShift, sharesPerContract, include = null) {
   if (legs.length === 0) return null;
   const strikes = [...new Set(legs.map((l) => l.strike))].sort((a, b) => a - b);
   const minK = strikes[0];
   const maxK = strikes[strikes.length - 1];
   const pad = strikes.length > 1 ? (maxK - minK) * 0.15 : Math.max(minK * 0.05, 5);
-  const domainMin = minK - pad;
-  const domainMax = maxK + pad;
+  let domainMin = minK - pad;
+  let domainMax = maxK + pad;
+  // The Δ0 marker used to be silently clipped when it landed past the
+  // strike-derived edge (ZB: Δ0 at 107.35 against a 107.3 edge). Stretch the
+  // domain to keep it on the chart, with half a pad of breathing room.
+  if (include != null) {
+    domainMin = Math.min(domainMin, include - pad * 0.5);
+    domainMax = Math.max(domainMax, include + pad * 0.5);
+  }
   const xs = [domainMin, ...strikes, domainMax];
 
   const segments = [];
@@ -516,7 +526,9 @@ function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
             x={xScale(neutralPrice)} y={mT - 4}
             textAnchor="middle" fontSize="10.5" fill={ACCENT} fontFamily="Inter, sans-serif"
           >
-            {`Δ0 ${neutralPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+            {/* Whole points are plenty at index-sized prices, but on a
+                bond-priced underlying "107" hides 11 ticks — show cents. */}
+            {`Δ0 ${neutralPrice.toLocaleString(undefined, { maximumFractionDigits: neutralPrice < 1000 ? 2 : 0 })}`}
           </text>
         </g>
       )}
