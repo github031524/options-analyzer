@@ -153,9 +153,63 @@
   color: var(--color-accent-800);
 }
 
-/* Drag-over feedback for the chart panel, which doubles as the drop target
+/* Drag-over feedback for the chart panels, which double as the drop target
    once results are on screen — same look as the dropzone's own drag-over. */
 .blueprint--drop {
   border-color: var(--color-accent-500);
   background: var(--color-accent-100);
 }
+
+
+/* ---- Profit / loss chart ------------------------------------------------ */
+
+/* Title on the left; the summary figures and the line key pushed right,
+   wrapping beneath it on narrow screens. */
+.pnl-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3) var(--space-7);
+  margin-bottom: var(--space-3);
+}
+
+.pnl-head__title { margin-right: auto; }
+
+/* What the P&L is measured from — read as a note, not as a label. */
+.pnl-head__note {
+  margin-left: var(--space-2);
+  font-weight: 500;
+  font-size: 11.5px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.pnl-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.pnl-stat__figure {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Line key: a short sample of each line ahead of its label. */
+.pnl-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pnl-legend .kpi__label + svg { margin-left: var(--space-3); }
+
+/* The washes under the expiry line and the P&L figures drawn inside the
+   chart take the gain/loss tokens, so they match every other figure. */
+.pnl-wash--gain { fill: var(--color-gain); fill-opacity: 0.13; }
+.pnl-wash--loss { fill: var(--color-loss); fill-opacity: 0.11; }
+
+.pnl-text--gain { fill: var(--color-gain); font-weight: 700; }
+.pnl-text--loss { fill: var(--color-loss); font-weight: 700; }

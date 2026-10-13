@@ -385,3 +385,40 @@ or the cookie value.
 `Secure` means the cookie won't stick over plain http on localhost — Basic auth
 still works there, it just re-prompts. Railway is HTTPS, so production is
 unaffected.
+
+---
+
+## Follow-up — profit / loss chart
+
+Each symbol now has a second chart under the net-position chart: dollar P&L
+across prices, from the same screenshot. The screenshot carries no cost basis,
+so P&L is measured from the screenshot's own prices (bid/ask mid, else last) —
+what the position makes or loses from there.
+
+| Element | Behaviour |
+|---|---|
+| Solid line | P&L at the first expiry: that expiry's legs at intrinsic, later-dated legs re-priced (Black-76) with the time they have left |
+| Dashed line | P&L today — every leg re-priced now at the vol backed out of its own quote. Hidden when no leg has time value left |
+| Washes | green above zero, red below, under the solid line |
+| Header | max profit, max loss (`Unlimited` when the line runs off forever past the top strike, `None` when there is none), break-evens, line key |
+| Markers | break-evens on the zero line; spot dot on the solid line, coloured by sign |
+| Hover | price plus both P&L figures; the box sits top or bottom, whichever the lines leave clear |
+| Range | the step chart's, so the strikes line up; cut at a price of zero |
+
+The summary figures cover every price, not just the plotted range, so a
+break-even off the chart still shows in the header.
+
+Verified against the pre-change build over 14 fixtures — NQ, GC with two short
+futures, ZB in ticks, DELL equity, an ES calendar, a CL long straddle, an ES
+iron condor, a protective put, expired legs, undated legs, strikes wide enough
+to take the range below zero, a typed spot, and multi-symbol. KPI tiles, the
+step chart (hover included) and tables are **identical**; no console errors; no
+NaN in any chart. Max profit, max loss and break-evens match an independent
+brute-force calculation on every single-expiry fixture, e.g.:
+
+| Fixture | Max profit | Max loss | Break-even |
+|---|---|---|---|
+| NQ short strangle | `183,250` | `Unlimited` | `27,861 · 31,139` |
+| ES iron condor | `1,400` | `−3,600` | `6,572 · 7,028` |
+| CL long straddle | `Unlimited` | `−24,500` | `65.1 · 74.9` |
+| ZB short puts | `25,000` | `−42,625,000` | `108'08` |
