@@ -121,17 +121,25 @@ function impliedVol(type, F, K, T, price) {
   return (lo + hi) / 2;
 }
 
+const YEAR_MS = 365.25 * 24 * 3600 * 1000;
+
+// Each leg's time to expiry in years, and the vol its own quote implies at the
+// current spot — what every re-pricing below starts from, so the Δ0 estimate
+// and the P&L chart read the same snapshot.
+function withImpliedVols(legs, spot, now) {
+  return legs.map((leg) => {
+    const T = leg.expiry != null ? (leg.expiry - now) / YEAR_MS : 0;
+    return { ...leg, T, iv: impliedVol(leg.type, spot, leg.strike, T, leg.last) };
+  });
+}
+
 // Price at which the delta-weighted position nets to zero. Each leg's vol is
 // backed out once at the current spot and then held fixed while the price is
 // varied (the standard sticky-vol assumption) — so this is a snapshot, and it
 // drifts toward the step curve's crossing as expiry approaches.
 function deltaNeutralPrice(legs, baselineShift, sharesPerContract, spot) {
   if (!(spot > 0) || legs.length === 0) return null;
-  const now = Date.now();
-  const priced = legs.map((leg) => {
-    const T = leg.expiry != null ? (leg.expiry - now) / (365.25 * 24 * 3600 * 1000) : 0;
-    return { ...leg, T, iv: impliedVol(leg.type, spot, leg.strike, T, leg.last) };
-  });
+  const priced = withImpliedVols(legs, spot, Date.now());
   // Every leg expired (or none dated) means the step curve already is the answer.
   if (priced.every((l) => !(l.T > 0) || l.iv == null)) return null;
 
@@ -266,6 +274,7 @@ function buildSymbolViews(rawRows, manualSpots = {}) {
     // Computed before the curve so the chart's domain can stretch to keep the
     // Δ0 marker on screen when it falls past the strike range.
     const neutralPrice = ready ? deltaNeutralPrice(legRows, baselineShift, sharesPerContract, spotPrice) : null;
+    const curve = ready ? buildCurve(legRows, baselineShift, sharesPerContract, neutralPrice) : null;
 
     return {
       ticker,
@@ -274,7 +283,12 @@ function buildSymbolViews(rawRows, manualSpots = {}) {
       putsTotal,
       callsTotal,
       grandTotal: putsTotal + callsTotal,
-      curve: ready ? buildCurve(legRows, baselineShift, sharesPerContract, neutralPrice) : null,
+      curve,
+      // Drawn over the step chart's price range, so the two charts' strikes
+      // line up one above the other.
+      pnl: ready
+        ? buildPnl(legRows, baselineShift, spotPrice, dollarMultiplier, sharesPerContract, curve.domainMin, curve.domainMax)
+        : null,
       netAtSpot: ready ? netPositionAt(legRows, baselineShift, spotPrice, sharesPerContract) : null,
       neutralPrice,
       ready,
@@ -396,6 +410,98 @@ function buildCurve(legs, baselineShift, sharesPerContract, include = null) {
   return { segments, domainMin, domainMax, strikes };
 }
 
+// ---------- profit / loss ----------
+//
+// The screenshot shows today's prices but not what was paid for each leg, so
+// P&L is measured from the screenshot's prices: the dollars made or lost from
+// there if the whole position is closed with the underlying at a given price.
+// Two lines. "At expiry" is drawn at the FIRST expiry — that expiry's options
+// are worth their intrinsic, and a later-dated leg keeps the time it still has
+// left. "Today" re-prices every leg now. Both run Black-76 at the vol backed
+// out of each leg's own quote, the same snapshot the Δ0 estimate uses.
+function buildPnl(legs, baselineShift, spot, dollarMultiplier, sharesPerContract, domainMin, domainMax) {
+  const now = Date.now();
+  const dated = legs.map((l) => l.expiry).filter((e) => e != null);
+  const firstExpiry = dated.length ? Math.min(...dated) : null;
+  // An expiry already past leaves nothing to wait for: the line is drawn now.
+  const horizon = Math.max(now, firstExpiry ?? now);
+  const priced = withImpliedVols(legs, spot, now).map((l) => ({
+    ...l,
+    tLeft: l.expiry != null ? (l.expiry - horizon) / YEAR_MS : 0,
+  }));
+  // The underlying row counts contracts for futures but shares for equities,
+  // so its dollars per point differ from an option's.
+  const underlyingPerPoint = dollarMultiplier / sharesPerContract;
+  // black76Price falls back to intrinsic for a leg with no time or no vol.
+  const pnlWith = (price, timeOf) =>
+    baselineShift * (price - spot) * underlyingPerPoint +
+    priced.reduce(
+      (sum, l) => sum + l.position * (black76Price(l.type, price, l.strike, timeOf(l), l.iv) - l.last) * dollarMultiplier,
+      0
+    );
+  const atExpiry = (price) => pnlWith(price, (l) => l.tLeft);
+  // With no time value left anywhere the two lines are one and the same.
+  const today =
+    horizon > now && priced.some((l) => l.T > 0 && l.iv != null) ? (price) => pnlWith(price, (l) => l.T) : null;
+
+  const strikes = [...new Set(legs.map((l) => l.strike))].sort((a, b) => a - b);
+  // Even steps plus every strike in view: a single-expiry line is straight
+  // between strikes, so landing on each kink draws it exactly. Prices stop at
+  // zero even where the chart's range runs below it.
+  const lo = Math.max(domainMin, 0);
+  const STEPS = 300;
+  const xs = [
+    ...new Set([
+      ...Array.from({ length: STEPS + 1 }, (_, i) => lo + ((domainMax - lo) * i) / STEPS),
+      ...strikes.filter((k) => k > lo && k < domainMax),
+    ]),
+  ].sort((a, b) => a - b);
+
+  // The summary figures cover every price, not just the plotted range. Far
+  // above the top strike every call moves one-for-one with the underlying and
+  // every put is worthless, so the line ends at this slope: falling is an
+  // unlimited loss, rising an unlimited profit.
+  const slopeAbove =
+    baselineShift * underlyingPerPoint +
+    legs.reduce((s, l) => s + (l.type === "CALL" ? l.position * dollarMultiplier : 0), 0);
+  // Short of that, it's scanned from zero to twice the top price, strikes
+  // included — exact for a single-expiry line, straight between strikes, and
+  // within a scan step for a later-dated leg's curve.
+  const reach = 2 * Math.max(spot, ...strikes);
+  const SCAN = 2000;
+  const scan = [...new Set([0, ...strikes, ...Array.from({ length: SCAN + 1 }, (_, i) => (reach * i) / SCAN)])]
+    .sort((a, b) => a - b)
+    .map((x) => ({ x, y: atExpiry(x) }));
+  const breakEvens = [];
+  for (let i = 1; i < scan.length; i++) {
+    const up = scan[i - 1].y >= 0;
+    if (scan[i].y >= 0 === up) continue;
+    let a = scan[i - 1].x, b = scan[i].x;
+    for (let k = 0; k < 60; k++) {
+      const mid = (a + b) / 2;
+      if (atExpiry(mid) >= 0 === up) a = mid;
+      else b = mid;
+    }
+    breakEvens.push((a + b) / 2);
+  }
+  const last = scan[scan.length - 1];
+  if (slopeAbove !== 0 && last.y >= 0 !== slopeAbove > 0) breakEvens.push(last.x - last.y / slopeAbove);
+  const ys = scan.map((p) => p.y);
+
+  return {
+    expiryPts: xs.map((x) => ({ x, y: atExpiry(x) })),
+    todayPts: today ? xs.map((x) => ({ x, y: today(x) })) : null,
+    breakEvens,
+    maxProfit: slopeAbove > 0 ? Infinity : Math.max(...ys),
+    maxLoss: slopeAbove < 0 ? -Infinity : Math.min(...ys),
+    atSpot: atExpiry(spot),
+    firstExpiry,
+    mixedExpiries: new Set(dated).size > 1,
+    atExpiry,
+    today,
+  };
+}
+
 // A real minus sign (U+2212), not a hyphen — the platform's number treatment.
 const MINUS = "−";
 
@@ -444,7 +550,19 @@ function fmt64(price) {
 function fmtShort(n) {
   const sign = n < 0 ? MINUS : "";
   const abs = Math.abs(n);
+  // P&L axes reach millions of dollars, where "1500K" would read badly.
+  if (abs >= 1e6) return `${sign}${Number((abs / 1e6).toFixed(1))}M`;
   return abs >= 1000 ? `${sign}${Math.round(abs / 1000)}K` : `${sign}${Math.round(abs)}`;
+}
+
+// A price picked out on a chart (Δ0, a break-even). Treasuries read in ticks
+// ("107'11", nearest 1/32), matching the quote screen. Elsewhere, whole points
+// are plenty at index-sized prices but hide too much under 1,000 — show cents
+// there.
+function fmtLevel(price, ticker) {
+  return TICK32_TICKERS.has(ticker)
+    ? fmt32(price)
+    : price.toLocaleString(undefined, { maximumFractionDigits: price < 1000 ? 2 : 0 });
 }
 
 // Smallest 2-significant-figure number at or above value*1.1 (10% headroom),
@@ -459,6 +577,16 @@ function niceCeil(value) {
 }
 
 // ---------- chart ----------
+
+// The pointer's x in a chart's own viewBox units, whatever size it's drawn at.
+function svgPointerX(svg, e) {
+  const ctm = svg?.getScreenCTM();
+  if (!svg || !ctm) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  return pt.matrixTransform(ctm.inverse()).x;
+}
 
 function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
   const svgRef = useRef(null);
@@ -505,14 +633,9 @@ function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
   area += `L${xScale(segments[segments.length - 1].x1)},${zeroY} Z`;
 
   const handleMove = (e) => {
-    const svg = svgRef.current;
-    const ctm = svg?.getScreenCTM();
-    if (!svg || !ctm) return;
-    const pt = svg.createSVGPoint();
-    pt.x = e.clientX;
-    pt.y = e.clientY;
-    const loc = pt.matrixTransform(ctm.inverse());
-    const x = Math.min(Math.max(loc.x, mL), W - mR);
+    const pointerX = svgPointerX(svgRef.current, e);
+    if (pointerX == null) return;
+    const x = Math.min(Math.max(pointerX, mL), W - mR);
     const price = priceAt(x);
     setHover({ x, price, netPosition: segmentAt(price).y });
   };
@@ -595,15 +718,7 @@ function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
             x={xScale(neutralPrice)} y={mT - 4}
             textAnchor="middle" fontSize="10.5" fill={ACCENT} fontFamily="Inter, sans-serif"
           >
-            {/* Treasuries read in ticks ("107'11", nearest 1/32), matching
-                the quote screen. Elsewhere, whole points are plenty at
-                index-sized prices but hide too much under 1,000 — show
-                cents there. */}
-            {`Δ0 ${
-              TICK32_TICKERS.has(ticker)
-                ? fmt32(neutralPrice)
-                : neutralPrice.toLocaleString(undefined, { maximumFractionDigits: neutralPrice < 1000 ? 2 : 0 })
-            }`}
+            {`Δ0 ${fmtLevel(neutralPrice, ticker)}`}
           </text>
         </g>
       )}
@@ -615,6 +730,226 @@ function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
         <circle
           className={`spot-dot ${spotNet > 0 ? "spot-dot--gain" : spotNet < 0 ? "spot-dot--loss" : ""}`}
           cx={xScale(spotPrice)} cy={yScale(spotNet)} r="7"
+          stroke="#fff" strokeWidth="2" pointerEvents="none"
+        />
+      )}
+      {tip}
+    </svg>
+  );
+}
+
+// ---------- profit / loss chart ----------
+
+// The P&L chart's summary figures, with the key to its two lines.
+function PnlHead({ pnl, ticker }) {
+  const { maxProfit, maxLoss, breakEvens, firstExpiry, mixedExpiries, today } = pnl;
+  // A line that runs off forever past the top strike has no maximum, and a
+  // position that can't win (or can't lose) has none to show either.
+  const stats = [
+    ["Max profit", maxProfit === Infinity ? "Unlimited" : maxProfit > 0 ? fmtMoney(maxProfit) : "None", Math.max(maxProfit, 0)],
+    ["Max loss", maxLoss === -Infinity ? "Unlimited" : maxLoss < 0 ? fmtMoney(maxLoss) : "None", Math.min(maxLoss, 0)],
+  ];
+  const date =
+    firstExpiry != null &&
+    new Date(firstExpiry).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+  const expiryLabel = `${mixedExpiries ? "At first expiry" : "At expiry"}${date ? ` · ${date}` : ""}`;
+
+  return (
+    <div className="pnl-head">
+      <p className="kpi__label pnl-head__title">
+        Profit / loss <span className="pnl-head__note">from the screenshot’s prices</span>
+      </p>
+      {stats.map(([label, text, sign]) => (
+        <span key={label} className="pnl-stat">
+          <span className="kpi__label">{label}</span>
+          <span className={`pnl-stat__figure ${signClass(sign)}`}>{text}</span>
+        </span>
+      ))}
+      <span className="pnl-stat">
+        <span className="kpi__label">Break-even</span>
+        <span className="pnl-stat__figure">
+          {breakEvens.length ? breakEvens.map((b) => fmtLevel(b, ticker)).join(" · ") : "None"}
+        </span>
+      </span>
+      <span className="pnl-legend">
+        <svg width="24" height="8" aria-hidden="true">
+          <line x1="0" y1="4" x2="24" y2="4" stroke={ACCENT} strokeWidth="2" />
+        </svg>
+        <span className="kpi__label">{expiryLabel}</span>
+        {today && (
+          <>
+            <svg width="24" height="8" aria-hidden="true">
+              <line x1="0" y1="4" x2="24" y2="4" stroke={ACCENT_TEXT} strokeWidth="1.5" strokeDasharray="5 3" />
+            </svg>
+            <span className="kpi__label">Today</span>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function PnlChart({ pnl, ticker, strikes, domainMin, domainMax, spotPrice }) {
+  const svgRef = useRef(null);
+  const [hover, setHover] = useState(null);
+
+  const { expiryPts, todayPts, breakEvens, atExpiry, today, atSpot } = pnl;
+  // The step chart's width and side margins, so a price sits at the same x in
+  // both charts and their strikes line up.
+  const W = 1500, H = 260;
+  const mL = 60, mR = 20, mT = 16, mB = 34;
+  const strikeLabelY = H - mB + 22;
+  const plotW = W - mL - mR;
+  const plotH = H - mT - mB;
+
+  const values = [...expiryPts, ...(todayPts || [])].map((p) => p.y);
+  const dataMax = Math.max(0, ...values);
+  const dataMin = Math.min(0, ...values);
+  let yMax = dataMax > 0 ? niceCeil(dataMax) : 0;
+  let yMin = dataMin < 0 ? -niceCeil(-dataMin) : 0;
+  if (yMax === yMin) { yMax = 1; yMin = -1; }  // flat on zero
+
+  const xScale = (p) => mL + ((p - domainMin) / (domainMax - domainMin)) * plotW;
+  const priceAt = (x) => domainMin + ((x - mL) / plotW) * (domainMax - domainMin);
+  const yScale = (v) => mT + ((yMax - v) / (yMax - yMin)) * plotH;
+  const zeroY = yScale(0);
+  // The lines start at a price of zero when the range runs below it.
+  const xFirst = xScale(expiryPts[0].x);
+  const xLast = xScale(expiryPts[expiryPts.length - 1].x);
+
+  const toLine = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${xScale(p.x)},${yScale(p.y)}`).join(" ");
+  const wash = `M${xFirst},${zeroY} ${expiryPts.map((p) => `L${xScale(p.x)},${yScale(p.y)}`).join(" ")} L${xLast},${zeroY} Z`;
+  // Clip ids are page-wide, and a ticker can start with a digit ("6E").
+  const clipId = `pnl-clip-${ticker.replace(/[^A-Za-z0-9]/g, "")}`;
+
+  const handleMove = (e) => {
+    const pointerX = svgPointerX(svgRef.current, e);
+    if (pointerX == null) return;
+    const x = Math.min(Math.max(pointerX, xFirst), xLast);
+    const price = Math.max(priceAt(x), 0);
+    setHover({ x, price, expiry: atExpiry(price), today: today ? today(price) : null });
+  };
+
+  let tip = null;
+  if (hover) {
+    const rows = [["At expiry", hover.expiry]];
+    if (hover.today != null) rows.push(["Today", hover.today]);
+    const tipW = 168, tipH = 28 + rows.length * 15;
+    const tipX = hover.x + 10 + tipW > W - mR ? hover.x - 10 - tipW : hover.x + 10;
+    // Top or bottom of the plot, whichever the lines leave clearer across the
+    // box — a short-premium position's plateau runs right along the top.
+    const lineYs = Array.from({ length: 9 }, (_, i) => Math.max(priceAt(tipX + (tipW * i) / 8), 0)).flatMap((p) =>
+      today ? [yScale(atExpiry(p)), yScale(today(p))] : [yScale(atExpiry(p))]
+    );
+    const clashes = (top) => lineYs.filter((y) => y > top - 6 && y < top + tipH + 6).length;
+    const topY = mT + 4;
+    const bottomY = H - mB - tipH - 4;
+    const tipY = clashes(bottomY) < clashes(topY) ? bottomY : topY;
+    tip = (
+      <g pointerEvents="none">
+        <line x1={hover.x} y1={mT} x2={hover.x} y2={H - mB} stroke={ACCENT} strokeWidth="1" strokeDasharray="3 3" />
+        {hover.today != null && (
+          <circle cx={hover.x} cy={yScale(hover.today)} r="3.5" fill={ACCENT_TEXT} stroke="#fff" strokeWidth="1.5" />
+        )}
+        <circle cx={hover.x} cy={yScale(hover.expiry)} r="3.5" fill={ACCENT} stroke="#fff" strokeWidth="1.5" />
+        <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="3" fill="#fff" stroke={HAIRLINE} strokeWidth="1" />
+        <text x={tipX + 8} y={tipY + 16} fontSize="10.5" fontWeight="600" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
+          {TICK32_TICKERS.has(ticker)
+            ? fmt32(hover.price)
+            : hover.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        </text>
+        {rows.map(([label, v], i) => (
+          <Fragment key={label}>
+            <text x={tipX + 8} y={tipY + 32 + i * 15} fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
+              {label}
+            </text>
+            <text
+              x={tipX + tipW - 8} y={tipY + 32 + i * 15}
+              textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif"
+              className={v > 0 ? "pnl-text--gain" : v < 0 ? "pnl-text--loss" : undefined}
+            >
+              {fmtMoney(v)}
+            </text>
+          </Fragment>
+        ))}
+      </g>
+    );
+  }
+
+  return (
+    <svg
+      ref={svgRef}
+      viewBox={`0 0 ${W} ${H}`}
+      width="100%"
+      role="img"
+      aria-label={`Profit and loss chart for ${ticker} across prices${today ? ", at expiry and today" : ", at expiry"}, ranging from ${fmtShort(yMin)} to ${fmtShort(yMax)} dollars`}
+      onMouseMove={handleMove}
+      onMouseLeave={() => setHover(null)}
+      style={{ cursor: "crosshair" }}
+    >
+      <defs>
+        <clipPath id={`${clipId}-gain`}>
+          <rect x={mL} y={mT} width={plotW} height={zeroY - mT} />
+        </clipPath>
+        <clipPath id={`${clipId}-loss`}>
+          <rect x={mL} y={zeroY} width={plotW} height={H - mB - zeroY} />
+        </clipPath>
+      </defs>
+      {strikes.map((k) => (
+        <line key={k} x1={xScale(k)} y1={mT} x2={xScale(k)} y2={H - mB} stroke={HAIRLINE} strokeWidth="1" />
+      ))}
+      {/* Profit above the zero line and loss below it, washed in the gain/loss
+          colours. */}
+      <path d={wash} className="pnl-wash--gain" clipPath={`url(#${clipId}-gain)`} />
+      <path d={wash} className="pnl-wash--loss" clipPath={`url(#${clipId}-loss)`} />
+      <line x1={mL} y1={zeroY} x2={W - mR} y2={zeroY} stroke={ACCENT_TEXT} strokeWidth="1.75" />
+      {todayPts && (
+        <path d={toLine(todayPts)} fill="none" stroke={ACCENT_TEXT} strokeWidth="1.5" strokeDasharray="5 3" />
+      )}
+      <path d={toLine(expiryPts)} fill="none" stroke={ACCENT} strokeWidth="2" strokeLinejoin="miter" />
+      {/* A small profit over a large tail loss puts a scale end right on top
+          of the zero label; that end is left unlabelled rather than overprinted. */}
+      {yMax !== 0 && zeroY - yScale(yMax) >= 11 && (
+        <text x={mL - 10} y={yScale(yMax) + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(yMax)}</text>
+      )}
+      <text x={mL - 10} y={zeroY + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">0</text>
+      {yMin !== 0 && yScale(yMin) - zeroY >= 11 && (
+        <text x={mL - 10} y={yScale(yMin) + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(yMin)}</text>
+      )}
+      {strikes.map((k) => (
+        <text key={k} x={xScale(k)} y={strikeLabelY} textAnchor="middle" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
+          {TICK32_TICKERS.has(ticker) ? fmt32(k) : k}
+        </text>
+      ))}
+      {/* Break-evens sit on the zero line, labelled on their losing side —
+          where the space above the line is empty — unless that side runs out
+          of room at the plot's edge. */}
+      {breakEvens
+        .filter((b) => b >= domainMin && b <= domainMax)
+        .map((b) => {
+          const x = xScale(b);
+          const label = `Break-even ${fmtLevel(b, ticker)}`;
+          const labelW = label.length * 6; // roughly, at this size
+          const lossOnLeft = atExpiry(Math.max(b - (domainMax - domainMin) * 1e-3, 0)) < 0;
+          const left = lossOnLeft ? x - 8 - labelW >= mL : x + 8 + labelW > W - mR;
+          return (
+            <g key={b} pointerEvents="none">
+              <circle cx={x} cy={zeroY} r="4" fill="#fff" stroke={ACCENT_TEXT} strokeWidth="1.5" />
+              <text
+                x={left ? x - 8 : x + 8} y={zeroY - 8}
+                textAnchor={left ? "end" : "start"} fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif"
+              >
+                {label}
+              </text>
+            </g>
+          );
+        })}
+      {/* Spot, on the expiry line: what holding to expiry pays if the price
+          doesn't move. The step chart's dot, coloured the same way. */}
+      {spotPrice >= domainMin && spotPrice <= domainMax && (
+        <circle
+          className={`spot-dot ${atSpot > 0 ? "spot-dot--gain" : atSpot < 0 ? "spot-dot--loss" : ""}`}
+          cx={xScale(spotPrice)} cy={yScale(atSpot)} r="7"
           stroke="#fff" strokeWidth="2" pointerEvents="none"
         />
       )}
@@ -938,10 +1273,10 @@ function SpotPrompt({ ticker, onSubmit }) {
 
 // ---------- main ----------
 
-// One symbol's block: its KPI row, its chart, its table. The chart panel is a
-// drop target like the others, so a screenshot can be dropped anywhere.
+// One symbol's block: its KPI row, its two charts, its table. Both chart panels
+// are drop targets like the others, so a screenshot can be dropped anywhere.
 function PositionSection({ view, columnWidths, startResize, activeColumn, sort, onSort, dragOver, onDragOver, onDragLeave, onDrop }) {
-  const { ticker, spotPrice, spotIsTyped, legRows, putsTotal, callsTotal, grandTotal, curve, netAtSpot, neutralPrice } =
+  const { ticker, spotPrice, spotIsTyped, legRows, putsTotal, callsTotal, grandTotal, curve, pnl, netAtSpot, neutralPrice } =
     view;
 
   const sortedRows = sortLegRows(legRows, sort);
@@ -1002,6 +1337,23 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, sort, 
           neutralPrice={neutralPrice}
           spotPrice={spotPrice}
           spotNet={netAtSpot}
+        />
+      </Blueprint>
+
+      <Blueprint
+        className={dragOver ? "blueprint--drop" : ""}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        <PnlHead pnl={pnl} ticker={ticker} />
+        <PnlChart
+          pnl={pnl}
+          ticker={ticker}
+          strikes={curve.strikes}
+          domainMin={curve.domainMin}
+          domainMax={curve.domainMax}
+          spotPrice={spotPrice}
         />
       </Blueprint>
 
@@ -1222,9 +1574,9 @@ export default function OptionsPositionAnalyzer() {
       <div className="content">
       <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={onSelect} />
 
-      {/* Once results are on screen the chart panel becomes the drop target, so
-          the standalone dropzone is only needed when there's nothing to show —
-          including the case where rows loaded but weren't usable. */}
+      {/* Once results are on screen the chart panels become the drop targets,
+          so the standalone dropzone is only needed when there's nothing to
+          show — including the case where rows loaded but weren't usable. */}
       {!showResults && (
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
