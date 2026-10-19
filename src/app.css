@@ -8,7 +8,65 @@
    ========================================================================== */
 
 
-/* ---- KPI row ------------------------------------------------------------ */
+/* ---- One-screen layout -------------------------------------------------- */
+
+/* A position fits one screen with no page scroll: the chart takes the left
+   two-thirds, every figure and the leg table the right third. The height is
+   the viewport less the top bar and the content region's own top and bottom
+   padding (the platform's clamp, restated). Below the minimum the page
+   scrolls rather than squashing the chart flat. */
+.screen-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: calc(100vh - var(--topbar-h) - 2 * clamp(16px, 3vw, 32px));
+  min-height: 520px;
+}
+
+/* Symbol tabs on the left, "Reading…" pushed right. */
+.screen-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.screen-bar__status { margin-left: auto; }
+
+.screen {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--grid-gap);
+}
+
+.screen__chart {
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen__data {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+}
+
+/* Narrow screens stack the chart over the figures and let the page scroll.
+   Nothing shares a screen height there, so the screen sizes to its content
+   (sharing a height it no longer has squeezed the leg table to nothing) and
+   the chart gets a fixed one. */
+@media (max-width: 900px) {
+  .screen-wrap { height: auto; min-height: 0; }
+  .screen { flex: none; grid-template-columns: minmax(0, 1fr); }
+  .screen__chart { height: 520px; }
+}
+
+
+/* ---- KPI tiles ---------------------------------------------------------- */
 
 /* Tiles are the platform's: label above figure, platform sizes. Only the
    paragraph margins need clearing — the app renders both as <p>. */
@@ -24,18 +82,18 @@
   color: var(--color-accent-800);
 }
 
-/* Tiles size to their own content rather than equal columns, so a long label
-   never truncates; leftover space is shared out and tiles wrap when needed. */
-.app-kpis {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--grid-gap);
-  margin-bottom: var(--space-6);
+/* Two equal columns in the right third, padded tighter than the platform
+   tile so all eight figures leave the leg table room on one screen. */
+.kpi-grid {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
 }
 
-.app-kpis > .blueprint {
-  flex: 1 0 auto;
-  margin-bottom: 0;
+.kpi-grid > .blueprint {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
 }
 
 
@@ -49,8 +107,8 @@
 .table td.gain,
 .table td.loss { font-weight: 700; }
 
-/* Spot marker on the chart — same tokens as the figures, so the dot and the
-   "net position at spot" tile can never disagree. */
+/* Spot markers on the chart — same tokens as the figures, so a dot and its
+   tile can never disagree. */
 .spot-dot { fill: var(--color-accent-900); }
 .spot-dot--gain { fill: var(--color-gain); }
 .spot-dot--loss { fill: var(--color-loss); }
@@ -79,10 +137,30 @@
   border-bottom: none;
 }
 
-/* Long tables scroll inside their frame with the header pinned; short tables
-   are unaffected. The wrapper also gives resized-wide tables a horizontal
-   scrollbar instead of spilling past the frame. */
-.table-scroll { max-height: 80vh; }
+/* The table takes what the tiles leave of the right third and no more: a
+   long one scrolls inside its frame with the header pinned, a short one stays
+   short. The wrapper also gives resized-wide tables a horizontal scrollbar
+   instead of spilling past the frame. */
+.screen__table {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen__table .table-scroll { flex: 1 1 auto; min-height: 0; }
+
+/* Narrow columns: tighter cells, and header labels a step smaller and allowed
+   to wrap, so "Total extrinsic" folds onto two lines rather than clipping. */
+.screen__table .table { --table-cell-px: 6px; }
+
+.screen__table .table th {
+  white-space: normal;
+  vertical-align: bottom;
+  font-size: var(--size-micro);
+  letter-spacing: 0.08em;
+}
 
 
 /* ---- Top bar — data age readout ----------------------------------------- */
@@ -103,14 +181,6 @@
 
 /* ---- App-specific components -------------------------------------------- */
 
-/* Panel header row — holds the panel's action, kept to the right. */
-.panel-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: var(--space-3);
-}
-
 /* Asks for the spot price when the screenshot was cropped above it. The frame
    is the platform's tinted blueprint (.blueprint.blueprint--tint) — a prompt
    rather than an error, since it is recoverable without re-cropping. Only the
@@ -127,13 +197,9 @@
 /* The "that isn't a price" hint, under the field once it has been flagged. */
 .spot-prompt__error { flex-basis: 100%; }
 
-/* One symbol's KPIs + chart + table. Separated so stacked symbols read as
-   distinct blocks rather than one continuous run of panels. */
-.symbol-block + .symbol-block {
-  margin-top: var(--space-8);
-  padding-top: var(--space-6);
-  border-top: var(--hairline);
-}
+/* Notices showing with results sit in the one-screen column, which spaces
+   them itself. */
+.screen-wrap > .blueprint { margin: 0; }
 
 /* This app's dropzone carries an icon, a title and a hint rather than the
    single .micro line; the dashed frame and drag-over state come from the
@@ -153,7 +219,7 @@
   color: var(--color-accent-800);
 }
 
-/* Drag-over feedback for the chart panels, which double as the drop target
+/* Drag-over feedback for the chart panel, which doubles as the drop target
    once results are on screen — same look as the dropzone's own drag-over. */
 .blueprint--drop {
   border-color: var(--color-accent-500);
@@ -161,11 +227,11 @@
 }
 
 
-/* ---- Profit / loss chart ------------------------------------------------ */
+/* ---- Position chart ----------------------------------------------------- */
 
-/* Title on the left; the summary figures and the line key pushed right,
-   wrapping beneath it on narrow screens. */
+/* Title on the left, the line key pushed right. */
 .pnl-head {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -184,19 +250,6 @@
   letter-spacing: 0;
 }
 
-.pnl-stat {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-2);
-}
-
-.pnl-stat__figure {
-  font-family: var(--font-heading);
-  font-weight: 600;
-  font-size: var(--size-body);
-  font-variant-numeric: tabular-nums;
-}
-
 /* Line key: a short sample of each line ahead of its label. */
 .pnl-legend {
   display: inline-flex;
@@ -206,6 +259,20 @@
 
 .pnl-legend .kpi__label + svg { margin-left: var(--space-3); }
 
+/* Fills what the panel's title row leaves. The chart inside is drawn at this
+   box's measured size and positioned over it, so it can never feed back into
+   the size it's measured from. */
+.chart-box {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.chart-box > svg {
+  position: absolute;
+  inset: 0;
+}
+
 /* The washes under the expiry line and the P&L figures drawn inside the
    chart take the gain/loss tokens, so they match every other figure. */
 .pnl-wash--gain { fill: var(--color-gain); fill-opacity: 0.13; }
@@ -213,3 +280,21 @@
 
 .pnl-text--gain { fill: var(--color-gain); font-weight: 700; }
 .pnl-text--loss { fill: var(--color-loss); font-weight: 700; }
+
+/* The lower pane's name, in the gap between the panes — set like a label. */
+.chart-pane-label {
+  font-weight: 600;
+  font-size: var(--size-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  fill: var(--color-accent-800);
+}
+
+/* A label drawn over the lines gets a page-coloured outline, so a line
+   passing behind it can't strike it through. */
+.chart-halo {
+  paint-order: stroke;
+  stroke: var(--color-bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}

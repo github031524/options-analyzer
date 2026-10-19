@@ -588,167 +588,49 @@ function svgPointerX(svg, e) {
   return pt.matrixTransform(ctm.inverse()).x;
 }
 
-function StepChart({ curve, ticker, neutralPrice, spotPrice, spotNet }) {
-  const svgRef = useRef(null);
-  const [hover, setHover] = useState(null);
+// The pixel size an element is laid out at, kept current as it resizes.
+function useElementSize() {
+  const ref = useRef(null);
+  const [size, setSize] = useState(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setSize({ width: Math.floor(width), height: Math.floor(height) });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, size];
+}
 
-  if (!curve) return null;
-  const { segments, domainMin, domainMax, strikes } = curve;
-  const W = 1500, H = 230;
-  // Bottom margin carries the strike labels plus a band under the plot floor
-  // for negative steps' value labels, which sit below their own step.
-  const mL = 60, mR = 20, mT = 16, mB = 46;
-  const strikeLabelY = H - mB + 32;
-  const plotW = W - mL - mR;
-  const plotH = H - mT - mB;
-
-  // Size each side of zero independently — a position that never goes negative
-  // shouldn't spend half the chart on an empty negative half. Zero always stays
-  // on the axis (it's the reference the whole chart is about), just not forced
-  // to the middle.
-  const values = segments.map((s) => s.y);
-  const dataMax = Math.max(0, ...values);
-  const dataMin = Math.min(0, ...values);
-  let yMax = dataMax > 0 ? niceCeil(dataMax) : 0;
-  let yMin = dataMin < 0 ? -niceCeil(-dataMin) : 0;
-  if (yMax === yMin) { yMax = 1; yMin = -1; }  // curve is flat on zero
-
-  const xScale = (p) => mL + ((p - domainMin) / (domainMax - domainMin)) * plotW;
-  const priceAt = (x) => domainMin + ((x - mL) / plotW) * (domainMax - domainMin);
-  const yScale = (v) => mT + ((yMax - v) / (yMax - yMin)) * plotH;
-  const zeroY = yScale(0);
-  const segmentAt = (price) => segments.find((s) => price >= s.x0 && price <= s.x1) || segments[segments.length - 1];
-
-  let line = "";
-  segments.forEach((s, i) => {
-    const x0 = xScale(s.x0), x1 = xScale(s.x1), y = yScale(s.y);
-    line += (i === 0 ? `M${x0},${y} ` : `L${x0},${y} `) + `L${x1},${y} `;
-  });
-
-  let area = `M${xScale(segments[0].x0)},${zeroY} `;
-  segments.forEach((s) => {
-    const x0 = xScale(s.x0), x1 = xScale(s.x1), y = yScale(s.y);
-    area += `L${x0},${y} L${x1},${y} `;
-  });
-  area += `L${xScale(segments[segments.length - 1].x1)},${zeroY} Z`;
-
-  const handleMove = (e) => {
-    const pointerX = svgPointerX(svgRef.current, e);
-    if (pointerX == null) return;
-    const x = Math.min(Math.max(pointerX, mL), W - mR);
-    const price = priceAt(x);
-    setHover({ x, price, netPosition: segmentAt(price).y });
-  };
-  const handleLeave = () => setHover(null);
-
-  let tip = null;
-  if (hover) {
-    const tipW = 122, tipH = 40;
-    const tipX = hover.x + 10 + tipW > W - mR ? hover.x - 10 - tipW : hover.x + 10;
-    const tipY = mT + 4;
-    tip = (
-      <g pointerEvents="none">
-        <line x1={hover.x} y1={mT} x2={hover.x} y2={H - mB} stroke={ACCENT} strokeWidth="1" strokeDasharray="3 3" />
-        <circle cx={hover.x} cy={yScale(hover.netPosition)} r="3.5" fill={ACCENT} stroke="#fff" strokeWidth="1.5" />
-        <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="3" fill="#fff" stroke={HAIRLINE} strokeWidth="1" />
-        <text x={tipX + 8} y={tipY + 16} fontSize="10.5" fontWeight="600" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
-          {/* Treasuries hover in ticks too, rounded to the nearest 1/32. */}
-          {TICK32_TICKERS.has(ticker)
-            ? fmt32(hover.price)
-            : hover.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-        </text>
-        <text x={tipX + 8} y={tipY + 30} fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
-          {fmtMoney(hover.netPosition)}
-        </text>
-      </g>
-    );
-  }
-
+// Takes whatever room its panel leaves and draws the chart at exactly that
+// size, so a label stays 10.5px on any screen. Scaling one fixed-size picture
+// to fit instead shrank the text with the column — to about 6px in a
+// two-thirds-width panel.
+function ChartBox({ children }) {
+  const [ref, size] = useElementSize();
   return (
-    <svg
-      ref={svgRef}
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      role="img"
-      aria-label={`Step chart of net underlying position for ${ticker} across strike prices, ranging from ${fmtShort(yMin)} to ${fmtShort(yMax)} shares`}
-      onMouseMove={handleMove}
-      onMouseLeave={handleLeave}
-      style={{ cursor: "crosshair" }}
-    >
-      {strikes.map((k) => (
-        <line key={k} x1={xScale(k)} y1={mT} x2={xScale(k)} y2={H - mB} stroke={HAIRLINE} strokeWidth="1" />
-      ))}
-      <line x1={mL} y1={zeroY} x2={W - mR} y2={zeroY} stroke={ACCENT_TEXT} strokeWidth="1.75" />
-      <path d={area} fill={ACCENT_TINT} />
-      <path d={line} fill="none" stroke={ACCENT} strokeWidth="2" strokeLinejoin="miter" />
-      {yMax !== 0 && (
-        <text x={mL - 10} y={yScale(yMax) + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(yMax)}</text>
-      )}
-      <text x={mL - 10} y={zeroY + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">0</text>
-      {yMin !== 0 && (
-        <text x={mL - 10} y={yScale(yMin) + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(yMin)}</text>
-      )}
-      {strikes.map((k) => (
-        <text key={k} x={xScale(k)} y={strikeLabelY} textAnchor="middle" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
-          {/* Treasuries label the axis in ticks too: 106.5 → "106'16". */}
-          {TICK32_TICKERS.has(ticker) ? fmt32(k) : k}
-        </text>
-      ))}
-      {/* Net position value for each step, centered above its own segment. */}
-      {segments.map((s, i) => (
-        <text
-          key={`v${i}`}
-          x={(xScale(s.x0) + xScale(s.x1)) / 2}
-          y={s.y < 0 ? yScale(s.y) + 15 : yScale(s.y) - 6}
-          textAnchor="middle"
-          fontSize="10.5"
-          fill={ACCENT_TEXT}
-          fontFamily="Inter, sans-serif"
-        >
-          {fmtMoney(s.y)}
-        </text>
-      ))}
-      {neutralPrice != null && neutralPrice >= domainMin && neutralPrice <= domainMax && (
-        <g pointerEvents="none">
-          <line
-            x1={xScale(neutralPrice)} y1={mT} x2={xScale(neutralPrice)} y2={H - mB}
-            stroke={ACCENT} strokeWidth="1.25" strokeDasharray="4 3"
-          />
-          <text
-            x={xScale(neutralPrice)} y={mT - 4}
-            textAnchor="middle" fontSize="10.5" fill={ACCENT} fontFamily="Inter, sans-serif"
-          >
-            {`Δ0 ${fmtLevel(neutralPrice, ticker)}`}
-          </text>
-        </g>
-      )}
-      {/* Current spot, sitting on the step at its net position — drawn after the
-          Δ0 marker so it stays legible on top when the two nearly coincide.
-          Filled from the gain/loss tokens via CSS so it always matches the
-          "net position at spot" tile rather than drifting from it. */}
-      {spotPrice != null && spotNet != null && spotPrice >= domainMin && spotPrice <= domainMax && (
-        <circle
-          className={`spot-dot ${spotNet > 0 ? "spot-dot--gain" : spotNet < 0 ? "spot-dot--loss" : ""}`}
-          cx={xScale(spotPrice)} cy={yScale(spotNet)} r="7"
-          stroke="#fff" strokeWidth="2" pointerEvents="none"
-        />
-      )}
-      {tip}
-    </svg>
+    <div ref={ref} className="chart-box">
+      {size && size.width > 0 && size.height > 0 && children(size)}
+    </div>
   );
 }
 
-// ---------- profit / loss chart ----------
+// Every label on the chart: Inter at 10.5px in the accent text colour,
+// right-aligned unless told otherwise.
+function ChartText({ x, y, anchor = "end", children, ...rest }) {
+  return (
+    <text x={x} y={y} textAnchor={anchor} fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif" {...rest}>
+      {children}
+    </text>
+  );
+}
 
-// The P&L chart's summary figures, with the key to its two lines.
-function PnlHead({ pnl, ticker }) {
-  const { maxProfit, maxLoss, breakEvens, firstExpiry, mixedExpiries, today } = pnl;
-  // A line that runs off forever past the top strike has no maximum, and a
-  // position that can't win (or can't lose) has none to show either.
-  const stats = [
-    ["Max profit", maxProfit === Infinity ? "Unlimited" : maxProfit > 0 ? fmtMoney(maxProfit) : "None", Math.max(maxProfit, 0)],
-    ["Max loss", maxLoss === -Infinity ? "Unlimited" : maxLoss < 0 ? fmtMoney(maxLoss) : "None", Math.min(maxLoss, 0)],
-  ];
+// The chart's title, and the key to its two P&L lines.
+function ChartHead({ pnl }) {
+  const { firstExpiry, mixedExpiries, today } = pnl;
   const date =
     firstExpiry != null &&
     new Date(firstExpiry).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
@@ -759,18 +641,6 @@ function PnlHead({ pnl, ticker }) {
       <p className="kpi__label pnl-head__title">
         Profit / loss <span className="pnl-head__note">from the screenshot’s prices</span>
       </p>
-      {stats.map(([label, text, sign]) => (
-        <span key={label} className="pnl-stat">
-          <span className="kpi__label">{label}</span>
-          <span className={`pnl-stat__figure ${signClass(sign)}`}>{text}</span>
-        </span>
-      ))}
-      <span className="pnl-stat">
-        <span className="kpi__label">Break-even</span>
-        <span className="pnl-stat__figure">
-          {breakEvens.length ? breakEvens.map((b) => fmtLevel(b, ticker)).join(" · ") : "None"}
-        </span>
-      </span>
       <span className="pnl-legend">
         <svg width="24" height="8" aria-hidden="true">
           <line x1="0" y1="4" x2="24" y2="4" stroke={ACCENT} strokeWidth="2" />
@@ -789,138 +659,173 @@ function PnlHead({ pnl, ticker }) {
   );
 }
 
-function PnlChart({ pnl, ticker, strikes, domainMin, domainMax, spotPrice }) {
+// Filled from the gain/loss tokens via CSS, so a spot dot always matches its
+// tile rather than drifting from it.
+const spotDotClass = (v) => `spot-dot ${v > 0 ? "spot-dot--gain" : v < 0 ? "spot-dot--loss" : ""}`;
+
+// Profit/loss on top and the net position at expiry underneath, on one price
+// axis: a strike, the Δ0 marker or the hover line falls at the same x in both
+// panes, so any price reads straight down through the two.
+function PositionChart({ view, width: W, height: H }) {
   const svgRef = useRef(null);
   const [hover, setHover] = useState(null);
 
+  const { ticker, curve, pnl, neutralPrice, spotPrice, netAtSpot } = view;
+  const { segments, domainMin, domainMax, strikes } = curve;
   const { expiryPts, todayPts, breakEvens, atExpiry, today, atSpot } = pnl;
-  // The step chart's width and side margins, so a price sits at the same x in
-  // both charts and their strikes line up.
-  const W = 1500, H = 260;
-  const mL = 60, mR = 20, mT = 16, mB = 34;
-  const strikeLabelY = H - mB + 22;
-  const plotW = W - mL - mR;
-  const plotH = H - mT - mB;
 
-  const values = [...expiryPts, ...(todayPts || [])].map((p) => p.y);
-  const dataMax = Math.max(0, ...values);
-  const dataMin = Math.min(0, ...values);
-  let yMax = dataMax > 0 ? niceCeil(dataMax) : 0;
-  let yMin = dataMin < 0 ? -niceCeil(-dataMin) : 0;
-  if (yMax === yMin) { yMax = 1; yMin = -1; }  // flat on zero
+  // The top margin holds the Δ0 label. The bottom one carries the strike
+  // labels plus a band under the lower pane's floor for negative steps' value
+  // labels, which sit below their own step. The gap between the panes holds
+  // the lower one's name.
+  const mL = 60, mR = 20, mT = 20, mB = 46, gap = 42;
+  const plotW = W - mL - mR;
+  const pnlTop = mT;
+  const pnlBottom = pnlTop + Math.round((H - mT - mB - gap) * 0.6);
+  const netTop = pnlBottom + gap;
+  const floor = H - mB;
 
   const xScale = (p) => mL + ((p - domainMin) / (domainMax - domainMin)) * plotW;
   const priceAt = (x) => domainMin + ((x - mL) / plotW) * (domainMax - domainMin);
-  const yScale = (v) => mT + ((yMax - v) / (yMax - yMin)) * plotH;
-  const zeroY = yScale(0);
-  // The lines start at a price of zero when the range runs below it.
+  // Each pane sizes each side of zero independently — a position that never
+  // goes negative shouldn't spend half a pane on an empty negative half. Zero
+  // always stays on the axis (it's the reference each pane is about), just
+  // not forced to the middle.
+  const paneScale = (values, top, bottom) => {
+    const hi = Math.max(0, ...values);
+    const lo = Math.min(0, ...values);
+    let max = hi > 0 ? niceCeil(hi) : 0;
+    let min = lo < 0 ? -niceCeil(-lo) : 0;
+    if (max === min) { max = 1; min = -1; }  // flat on zero
+    return { max, min, y: (v) => top + ((max - v) / (max - min)) * (bottom - top) };
+  };
+  const pnlScale = paneScale([...expiryPts, ...(todayPts || [])].map((p) => p.y), pnlTop, pnlBottom);
+  const netScale = paneScale(segments.map((s) => s.y), netTop, floor);
+  const pnlY = pnlScale.y;
+  const netY = netScale.y;
+  const pnlZero = pnlY(0);
+  const netZero = netY(0);
+
+  // P&L pane. Its lines start at a price of zero when the range runs below it.
+  const toLine = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${xScale(p.x)},${pnlY(p.y)}`).join(" ");
   const xFirst = xScale(expiryPts[0].x);
   const xLast = xScale(expiryPts[expiryPts.length - 1].x);
-
-  const toLine = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${xScale(p.x)},${yScale(p.y)}`).join(" ");
-  const wash = `M${xFirst},${zeroY} ${expiryPts.map((p) => `L${xScale(p.x)},${yScale(p.y)}`).join(" ")} L${xLast},${zeroY} Z`;
+  const wash = `M${xFirst},${pnlZero} ${expiryPts.map((p) => `L${xScale(p.x)},${pnlY(p.y)}`).join(" ")} L${xLast},${pnlZero} Z`;
   // Clip ids are page-wide, and a ticker can start with a digit ("6E").
   const clipId = `pnl-clip-${ticker.replace(/[^A-Za-z0-9]/g, "")}`;
+
+  // Net-position pane.
+  let step = "";
+  let stepArea = `M${xScale(segments[0].x0)},${netZero} `;
+  segments.forEach((s, i) => {
+    const x0 = xScale(s.x0), x1 = xScale(s.x1), y = netY(s.y);
+    step += (i === 0 ? `M${x0},${y} ` : `L${x0},${y} `) + `L${x1},${y} `;
+    stepArea += `L${x0},${y} L${x1},${y} `;
+  });
+  stepArea += `L${xScale(segments[segments.length - 1].x1)},${netZero} Z`;
+  const segmentAt = (price) => segments.find((s) => price >= s.x0 && price <= s.x1) || segments[segments.length - 1];
 
   const handleMove = (e) => {
     const pointerX = svgPointerX(svgRef.current, e);
     if (pointerX == null) return;
     const x = Math.min(Math.max(pointerX, xFirst), xLast);
     const price = Math.max(priceAt(x), 0);
-    setHover({ x, price, expiry: atExpiry(price), today: today ? today(price) : null });
+    setHover({ x, price, net: segmentAt(price).y, expiry: atExpiry(price), today: today ? today(price) : null });
   };
 
   let tip = null;
   if (hover) {
-    const rows = [["At expiry", hover.expiry]];
-    if (hover.today != null) rows.push(["Today", hover.today]);
-    const tipW = 168, tipH = 28 + rows.length * 15;
+    const rows = [["Net position", hover.net, false], ["P&L at expiry", hover.expiry, true]];
+    if (hover.today != null) rows.push(["P&L today", hover.today, true]);
+    const tipW = 184, tipH = 28 + rows.length * 15;
     const tipX = hover.x + 10 + tipW > W - mR ? hover.x - 10 - tipW : hover.x + 10;
-    // Top or bottom of the plot, whichever the lines leave clearer across the
-    // box — a short-premium position's plateau runs right along the top.
+    // Top or bottom of the P&L pane, whichever its lines leave clearer across
+    // the box — a short-premium position's plateau runs right along the top.
     const lineYs = Array.from({ length: 9 }, (_, i) => Math.max(priceAt(tipX + (tipW * i) / 8), 0)).flatMap((p) =>
-      today ? [yScale(atExpiry(p)), yScale(today(p))] : [yScale(atExpiry(p))]
+      today ? [pnlY(atExpiry(p)), pnlY(today(p))] : [pnlY(atExpiry(p))]
     );
     const clashes = (top) => lineYs.filter((y) => y > top - 6 && y < top + tipH + 6).length;
-    const topY = mT + 4;
-    const bottomY = H - mB - tipH - 4;
+    const topY = pnlTop + 4;
+    const bottomY = pnlBottom - tipH - 4;
     const tipY = clashes(bottomY) < clashes(topY) ? bottomY : topY;
     tip = (
       <g pointerEvents="none">
-        <line x1={hover.x} y1={mT} x2={hover.x} y2={H - mB} stroke={ACCENT} strokeWidth="1" strokeDasharray="3 3" />
+        <line x1={hover.x} y1={pnlTop} x2={hover.x} y2={floor} stroke={ACCENT} strokeWidth="1" strokeDasharray="3 3" />
         {hover.today != null && (
-          <circle cx={hover.x} cy={yScale(hover.today)} r="3.5" fill={ACCENT_TEXT} stroke="#fff" strokeWidth="1.5" />
+          <circle cx={hover.x} cy={pnlY(hover.today)} r="3.5" fill={ACCENT_TEXT} stroke="#fff" strokeWidth="1.5" />
         )}
-        <circle cx={hover.x} cy={yScale(hover.expiry)} r="3.5" fill={ACCENT} stroke="#fff" strokeWidth="1.5" />
+        <circle cx={hover.x} cy={pnlY(hover.expiry)} r="3.5" fill={ACCENT} stroke="#fff" strokeWidth="1.5" />
+        <circle cx={hover.x} cy={netY(hover.net)} r="3.5" fill={ACCENT} stroke="#fff" strokeWidth="1.5" />
         <rect x={tipX} y={tipY} width={tipW} height={tipH} rx="3" fill="#fff" stroke={HAIRLINE} strokeWidth="1" />
-        <text x={tipX + 8} y={tipY + 16} fontSize="10.5" fontWeight="600" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
+        <ChartText x={tipX + 8} y={tipY + 16} anchor="start" fontWeight="600">
+          {/* Treasuries hover in ticks too, rounded to the nearest 1/32. */}
           {TICK32_TICKERS.has(ticker)
             ? fmt32(hover.price)
             : hover.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-        </text>
-        {rows.map(([label, v], i) => (
+        </ChartText>
+        {rows.map(([label, v, money], i) => (
           <Fragment key={label}>
-            <text x={tipX + 8} y={tipY + 32 + i * 15} fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
+            <ChartText x={tipX + 8} y={tipY + 32 + i * 15} anchor="start">
               {label}
-            </text>
-            <text
-              x={tipX + tipW - 8} y={tipY + 32 + i * 15}
-              textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif"
-              className={v > 0 ? "pnl-text--gain" : v < 0 ? "pnl-text--loss" : undefined}
+            </ChartText>
+            <ChartText
+              x={tipX + tipW - 8}
+              y={tipY + 32 + i * 15}
+              className={money && v > 0 ? "pnl-text--gain" : money && v < 0 ? "pnl-text--loss" : undefined}
             >
               {fmtMoney(v)}
-            </text>
+            </ChartText>
           </Fragment>
         ))}
       </g>
     );
   }
 
+  // A pane's scale, labelled down its left edge. An end that would land on
+  // the zero label (a small profit over a large tail loss) is left unlabelled
+  // rather than overprinted.
+  const axisLabels = ({ max, min, y }) => (
+    <>
+      {max !== 0 && y(0) - y(max) >= 11 && <ChartText x={mL - 10} y={y(max) + 4}>{fmtShort(max)}</ChartText>}
+      <ChartText x={mL - 10} y={y(0) + 4}>0</ChartText>
+      {min !== 0 && y(min) - y(0) >= 11 && <ChartText x={mL - 10} y={y(min) + 4}>{fmtShort(min)}</ChartText>}
+    </>
+  );
+
   return (
     <svg
       ref={svgRef}
       viewBox={`0 0 ${W} ${H}`}
-      width="100%"
+      width={W}
+      height={H}
       role="img"
-      aria-label={`Profit and loss chart for ${ticker} across prices${today ? ", at expiry and today" : ", at expiry"}, ranging from ${fmtShort(yMin)} to ${fmtShort(yMax)} dollars`}
+      aria-label={`${ticker} across prices: profit and loss from ${fmtShort(pnlScale.min)} to ${fmtShort(pnlScale.max)} dollars, and net position at expiry from ${fmtShort(netScale.min)} to ${fmtShort(netScale.max)}`}
       onMouseMove={handleMove}
       onMouseLeave={() => setHover(null)}
       style={{ cursor: "crosshair" }}
     >
       <defs>
         <clipPath id={`${clipId}-gain`}>
-          <rect x={mL} y={mT} width={plotW} height={zeroY - mT} />
+          <rect x={mL} y={pnlTop} width={plotW} height={pnlZero - pnlTop} />
         </clipPath>
         <clipPath id={`${clipId}-loss`}>
-          <rect x={mL} y={zeroY} width={plotW} height={H - mB - zeroY} />
+          <rect x={mL} y={pnlZero} width={plotW} height={pnlBottom - pnlZero} />
         </clipPath>
       </defs>
       {strikes.map((k) => (
-        <line key={k} x1={xScale(k)} y1={mT} x2={xScale(k)} y2={H - mB} stroke={HAIRLINE} strokeWidth="1" />
+        <line key={k} x1={xScale(k)} y1={pnlTop} x2={xScale(k)} y2={floor} stroke={HAIRLINE} strokeWidth="1" />
       ))}
+
       {/* Profit above the zero line and loss below it, washed in the gain/loss
           colours. */}
       <path d={wash} className="pnl-wash--gain" clipPath={`url(#${clipId}-gain)`} />
       <path d={wash} className="pnl-wash--loss" clipPath={`url(#${clipId}-loss)`} />
-      <line x1={mL} y1={zeroY} x2={W - mR} y2={zeroY} stroke={ACCENT_TEXT} strokeWidth="1.75" />
+      <line x1={mL} y1={pnlZero} x2={W - mR} y2={pnlZero} stroke={ACCENT_TEXT} strokeWidth="1.75" />
       {todayPts && (
         <path d={toLine(todayPts)} fill="none" stroke={ACCENT_TEXT} strokeWidth="1.5" strokeDasharray="5 3" />
       )}
       <path d={toLine(expiryPts)} fill="none" stroke={ACCENT} strokeWidth="2" strokeLinejoin="miter" />
-      {/* A small profit over a large tail loss puts a scale end right on top
-          of the zero label; that end is left unlabelled rather than overprinted. */}
-      {yMax !== 0 && zeroY - yScale(yMax) >= 11 && (
-        <text x={mL - 10} y={yScale(yMax) + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(yMax)}</text>
-      )}
-      <text x={mL - 10} y={zeroY + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">0</text>
-      {yMin !== 0 && yScale(yMin) - zeroY >= 11 && (
-        <text x={mL - 10} y={yScale(yMin) + 4} textAnchor="end" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">{fmtShort(yMin)}</text>
-      )}
-      {strikes.map((k) => (
-        <text key={k} x={xScale(k)} y={strikeLabelY} textAnchor="middle" fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif">
-          {TICK32_TICKERS.has(ticker) ? fmt32(k) : k}
-        </text>
-      ))}
+      {axisLabels(pnlScale)}
       {/* Break-evens sit on the zero line, labelled on their losing side —
           where the space above the line is empty — unless that side runs out
           of room at the plot's edge. */}
@@ -934,24 +839,58 @@ function PnlChart({ pnl, ticker, strikes, domainMin, domainMax, spotPrice }) {
           const left = lossOnLeft ? x - 8 - labelW >= mL : x + 8 + labelW > W - mR;
           return (
             <g key={b} pointerEvents="none">
-              <circle cx={x} cy={zeroY} r="4" fill="#fff" stroke={ACCENT_TEXT} strokeWidth="1.5" />
-              <text
-                x={left ? x - 8 : x + 8} y={zeroY - 8}
-                textAnchor={left ? "end" : "start"} fontSize="10.5" fill={ACCENT_TEXT} fontFamily="Inter, sans-serif"
-              >
+              <circle cx={x} cy={pnlZero} r="4" fill="#fff" stroke={ACCENT_TEXT} strokeWidth="1.5" />
+              <ChartText x={left ? x - 8 : x + 8} y={pnlZero - 8} anchor={left ? "end" : "start"} className="chart-halo">
                 {label}
-              </text>
+              </ChartText>
             </g>
           );
         })}
-      {/* Spot, on the expiry line: what holding to expiry pays if the price
-          doesn't move. The step chart's dot, coloured the same way. */}
+
+      <ChartText x={mL} y={netTop - 14} anchor="start" className="chart-pane-label">
+        Net position at expiry
+      </ChartText>
+      <line x1={mL} y1={netZero} x2={W - mR} y2={netZero} stroke={ACCENT_TEXT} strokeWidth="1.75" />
+      <path d={stepArea} fill={ACCENT_TINT} />
+      <path d={step} fill="none" stroke={ACCENT} strokeWidth="2" strokeLinejoin="miter" />
+      {axisLabels(netScale)}
+      {/* Net position value for each step, centered above its own segment. */}
+      {segments.map((s, i) => (
+        <ChartText
+          key={`v${i}`}
+          x={(xScale(s.x0) + xScale(s.x1)) / 2}
+          y={s.y < 0 ? netY(s.y) + 15 : netY(s.y) - 6}
+          anchor="middle"
+        >
+          {fmtMoney(s.y)}
+        </ChartText>
+      ))}
+      {strikes.map((k) => (
+        <ChartText key={`k${k}`} x={xScale(k)} y={H - 14} anchor="middle">
+          {/* Treasuries label the axis in ticks too: 106.5 → "106'16". */}
+          {TICK32_TICKERS.has(ticker) ? fmt32(k) : k}
+        </ChartText>
+      ))}
+
+      {neutralPrice != null && neutralPrice >= domainMin && neutralPrice <= domainMax && (
+        <g pointerEvents="none">
+          <line
+            x1={xScale(neutralPrice)} y1={pnlTop} x2={xScale(neutralPrice)} y2={floor}
+            stroke={ACCENT} strokeWidth="1.25" strokeDasharray="4 3"
+          />
+          <ChartText x={xScale(neutralPrice)} y={pnlTop - 6} anchor="middle" fill={ACCENT}>
+            {`Δ0 ${fmtLevel(neutralPrice, ticker)}`}
+          </ChartText>
+        </g>
+      )}
+      {/* Spot in both panes: what holding to expiry pays if the price doesn't
+          move, and the net position it leaves. Drawn after the Δ0 marker so it
+          stays legible on top when the two nearly coincide. */}
       {spotPrice >= domainMin && spotPrice <= domainMax && (
-        <circle
-          className={`spot-dot ${atSpot > 0 ? "spot-dot--gain" : atSpot < 0 ? "spot-dot--loss" : ""}`}
-          cx={xScale(spotPrice)} cy={yScale(atSpot)} r="7"
-          stroke="#fff" strokeWidth="2" pointerEvents="none"
-        />
+        <g pointerEvents="none">
+          <circle className={spotDotClass(atSpot)} cx={xScale(spotPrice)} cy={pnlY(atSpot)} r="7" stroke="#fff" strokeWidth="2" />
+          <circle className={spotDotClass(netAtSpot)} cx={xScale(spotPrice)} cy={netY(netAtSpot)} r="7" stroke="#fff" strokeWidth="2" />
+        </g>
       )}
       {tip}
     </svg>
@@ -968,21 +907,22 @@ function Blueprint({ children, className = "", ...rest }) {
 
 // title feeds the native header tooltip (spec §06); numeric picks the sort
 // comparison and the first-click direction (numbers start descending, text
-// ascending — the finance default).
+// ascending — the finance default). The default widths fit the table in the
+// right-hand third of a laptop screen.
 const COLUMNS = [
-  { key: "strike", label: "Strike", width: 110, numeric: true,
+  { key: "strike", label: "Strike", width: 56, numeric: true,
     title: "Option strike price" },
-  { key: "type", label: "Type", width: 110, numeric: false,
+  { key: "type", label: "Type", width: 48, numeric: false,
     title: "PUT or CALL" },
-  { key: "qty", label: "Qty", width: 110, numeric: true,
+  { key: "qty", label: "Qty", width: 50, numeric: true,
     title: "Signed position — negative is short, positive is long" },
-  { key: "last", label: "Last", width: 130, numeric: true,
+  { key: "last", label: "Last", width: 54, numeric: true,
     title: "Bid–ask midpoint; falls back to the last trade when a quote is missing" },
-  { key: "intrinsic", label: "Intrinsic", width: 150, numeric: true,
+  { key: "intrinsic", label: "Intrinsic", width: 78, numeric: true,
     title: "Value if exercised now — how far the option is in the money" },
-  { key: "extrinsic", label: "Extrinsic", width: 150, numeric: true,
+  { key: "extrinsic", label: "Extrinsic", width: 78, numeric: true,
     title: "Time value — price minus intrinsic" },
-  { key: "totalExtrinsic", label: "Total extrinsic", width: 190, numeric: true,
+  { key: "totalExtrinsic", label: "Total extrinsic", width: 78, numeric: true,
     title: "Extrinsic × contracts × contract multiplier; positive is premium collected (short leg), negative premium paid (long leg)" },
 ];
 
@@ -1001,7 +941,9 @@ function sortLegRows(rows, sort) {
   });
 }
 
-const COLUMN_WIDTHS_KEY = "options-analyzer:column-widths";
+// A new key for the one-screen layout: widths saved for the old full-width
+// table would overflow its narrow column, so they're left behind.
+const COLUMN_WIDTHS_KEY = "options-analyzer:column-widths-v2";
 const ROWS_KEY = "options-analyzer:rows";
 // Kept in its own key rather than folded into the stored rows, so a position
 // saved before this existed still loads — it just has no age to show.
@@ -1273,11 +1215,22 @@ function SpotPrompt({ ticker, onSubmit }) {
 
 // ---------- main ----------
 
-// One symbol's block: its KPI row, its two charts, its table. Both chart panels
-// are drop targets like the others, so a screenshot can be dropped anywhere.
-function PositionSection({ view, columnWidths, startResize, activeColumn, sort, onSort, dragOver, onDragOver, onDragLeave, onDrop }) {
-  const { ticker, spotPrice, spotIsTyped, legRows, putsTotal, callsTotal, grandTotal, curve, pnl, netAtSpot, neutralPrice } =
-    view;
+// One summary figure, as the platform's KPI tile.
+function Tile({ label, labelTone = "", tone = "", title, children }) {
+  return (
+    <Blueprint className="kpi">
+      <p className={`kpi__label ${labelTone}`}>{label}</p>
+      <p className={`kpi__figure ${tone}`} title={title}>
+        {children}
+      </p>
+    </Blueprint>
+  );
+}
+
+// Leg by leg: puts subtotal inline under the puts, calls and grand totals in
+// the footer.
+function LegTable({ view, columnWidths, startResize, activeColumn, sort, onSort }) {
+  const { ticker, legRows, putsTotal, callsTotal, grandTotal } = view;
 
   const sortedRows = sortLegRows(legRows, sort);
   // The inline puts subtotal follows the puts wherever a sort puts them —
@@ -1288,141 +1241,179 @@ function PositionSection({ view, columnWidths, startResize, activeColumn, sort, 
   const px = TICK32_TICKERS.has(ticker) ? fmt64 : (v) => fmtSigned(v.toFixed(2));
 
   return (
-    <section className="symbol-block">
-      <div className="app-kpis">
-        <Blueprint className="kpi">
-          <p className="kpi__label">
-            <a
-              className="symbol"
-              href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${encodeURIComponent(tvSymbol(ticker))}`}
-              target="_blank"
-              rel="noopener"
-            >
-              {ticker}
-            </a>
-          </p>
+    <Blueprint className="screen__table">
+      {/* .table-scroll is the scroll box (spec §08a): resized-wide tables
+          scroll horizontally instead of spilling past the frame, and the
+          header pins at the box's own top for long tables. */}
+      <div className="table-scroll">
+      <table
+        className="table"
+        style={{ tableLayout: "fixed", width: `max(100%, ${columnWidths.reduce((a, b) => a + b, 0)}px)` }}
+      >
+        <colgroup>
+          {columnWidths.map((w, i) => (
+            <col key={COLUMNS[i].key} style={{ width: `${w}px` }} />
+          ))}
+        </colgroup>
+        <thead>
+          <tr>
+            {COLUMNS.map((c, i) => (
+              <th
+                key={c.key}
+                className={`sortable${c.key === "type" ? " text" : ""}`}
+                aria-sort={sort?.key === c.key ? sort.dir : undefined}
+              >
+                {/* Header text in a button so Tab reaches it and Enter or
+                    Space sorts; the native title is the column's tooltip. */}
+                <button className="th-sort" type="button" title={c.title} onClick={() => onSort(c.key)}>
+                  {c.label}
+                </button>
+                <span
+                  className={`th-resize${activeColumn === i ? " is-dragging" : ""}`}
+                  onPointerDown={(e) => startResize(i, e)}
+                />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sortedRows.map((r, i) => (
+            <Fragment key={`${r.type}-${r.strike}-${r.position}`}>
+              <tr className={r.type === "PUT" ? "row-put" : "row-call"}>
+                <td>{r.strike}</td>
+                <td className="text">{r.type}</td>
+                <td>{fmtSigned(r.position)}</td>
+                <td>{px(r.last)}</td>
+                <td>{px(r.intrinsic)}</td>
+                <td>{px(r.extrinsic)}</td>
+                <td className={signClass(r.totalExtrinsic)}>{fmtMoney(r.totalExtrinsic)}</td>
+              </tr>
+              {/* Puts subtotal sits with the puts rather than in the footer;
+                  the calls subtotal already falls directly under the calls. */}
+              {i === lastPutIndex && (
+                <tr className="table-subtotal">
+                  <td colSpan={6} className={signClass(putsTotal)}>Puts total extrinsic</td>
+                  <td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr><td colSpan={6} className={signClass(callsTotal)}>Calls total extrinsic</td><td className={signClass(callsTotal)}>{fmtMoney(callsTotal)}</td></tr>
+          <tr><td colSpan={6} className={signClass(grandTotal)}>Total extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
+        </tfoot>
+      </table>
+      </div>
+    </Blueprint>
+  );
+}
+
+// One symbol on one screen: the chart fills the left two-thirds; every figure
+// and the leg table sit in the right third. The chart panel doubles as the
+// drop target, so a new screenshot can go straight onto it.
+function PositionScreen({ view, tableProps, dragOver, onDragOver, onDragLeave, onDrop, ...rest }) {
+  const { ticker, spotPrice, spotIsTyped, putsTotal, callsTotal, grandTotal, pnl, netAtSpot } = view;
+  const { maxProfit, maxLoss, breakEvens } = pnl;
+
+  return (
+    <section className="screen" {...rest}>
+      <Blueprint
+        className={`screen__chart${dragOver ? " blueprint--drop" : ""}`}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        <ChartHead pnl={pnl} />
+        <ChartBox>{({ width, height }) => <PositionChart view={view} width={width} height={height} />}</ChartBox>
+      </Blueprint>
+
+      <div className="screen__data">
+        <div className="kpi-grid">
           {/* Flagged when typed, so an entered price is never mistaken for
               one read off the screenshot. */}
-          <p className="kpi__figure" title={spotIsTyped ? "Price you entered, not read from the screenshot" : undefined}>
+          <Tile
+            label={
+              <a
+                className="symbol"
+                href={`https://www.tradingview.com/chart/3Ojf0qKU/?symbol=${encodeURIComponent(tvSymbol(ticker))}`}
+                target="_blank"
+                rel="noopener"
+              >
+                {ticker}
+              </a>
+            }
+            title={spotIsTyped ? "Price you entered, not read from the screenshot" : undefined}
+          >
             {fmtPrice(spotPrice, ticker)}
             {spotIsTyped && <span className="kpi__figure-note"> (entered)</span>}
-          </p>
-        </Blueprint>
-        <Blueprint className="kpi">
-          <p className="kpi__label">Net position at spot</p>
-          <p className={`kpi__figure ${signClass(netAtSpot)}`}>{fmtMoney(netAtSpot)}</p>
-        </Blueprint>
-        {/* The three extrinsic totals differ only in label and value. */}
-        {[
-          ["Puts total extrinsic", putsTotal],
-          ["Calls total extrinsic", callsTotal],
-          ["Total extrinsic", grandTotal],
-        ].map(([label, total]) => (
-          <Blueprint key={label} className="kpi">
-            <p className={`kpi__label ${signClass(total)}`}>{label}</p>
-            <p className={`kpi__figure ${signClass(total)}`}>{fmtMoney(total)}</p>
-          </Blueprint>
-        ))}
-      </div>
-
-      <Blueprint
-        className={dragOver ? "blueprint--drop" : ""}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-      >
-        <StepChart
-          curve={curve}
-          ticker={ticker}
-          neutralPrice={neutralPrice}
-          spotPrice={spotPrice}
-          spotNet={netAtSpot}
-        />
-      </Blueprint>
-
-      <Blueprint
-        className={dragOver ? "blueprint--drop" : ""}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-      >
-        <PnlHead pnl={pnl} ticker={ticker} />
-        <PnlChart
-          pnl={pnl}
-          ticker={ticker}
-          strikes={curve.strikes}
-          domainMin={curve.domainMin}
-          domainMax={curve.domainMax}
-          spotPrice={spotPrice}
-        />
-      </Blueprint>
-
-      <Blueprint>
-        {/* .table-scroll is the scroll box (spec §08a): resized-wide tables
-            scroll horizontally instead of spilling past the frame, and the
-            header pins at the box's own top for long tables. */}
-        <div className="table-scroll">
-        <table
-          className="table"
-          style={{ tableLayout: "fixed", width: `max(100%, ${columnWidths.reduce((a, b) => a + b, 0)}px)` }}
-        >
-          <colgroup>
-            {columnWidths.map((w, i) => (
-              <col key={COLUMNS[i].key} style={{ width: `${w}px` }} />
-            ))}
-          </colgroup>
-          <thead>
-            <tr>
-              {COLUMNS.map((c, i) => (
-                <th
-                  key={c.key}
-                  className={`sortable${c.key === "type" ? " text" : ""}`}
-                  aria-sort={sort?.key === c.key ? sort.dir : undefined}
-                >
-                  {/* Header text in a button so Tab reaches it and Enter or
-                      Space sorts; the native title is the column's tooltip. */}
-                  <button className="th-sort" type="button" title={c.title} onClick={() => onSort(c.key)}>
-                    {c.label}
-                  </button>
-                  <span
-                    className={`th-resize${activeColumn === i ? " is-dragging" : ""}`}
-                    onPointerDown={(e) => startResize(i, e)}
-                  />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedRows.map((r, i) => (
-              <Fragment key={`${r.type}-${r.strike}-${r.position}`}>
-                <tr className={r.type === "PUT" ? "row-put" : "row-call"}>
-                  <td>{r.strike}</td>
-                  <td className="text">{r.type}</td>
-                  <td>{fmtSigned(r.position)}</td>
-                  <td>{px(r.last)}</td>
-                  <td>{px(r.intrinsic)}</td>
-                  <td>{px(r.extrinsic)}</td>
-                  <td className={signClass(r.totalExtrinsic)}>{fmtMoney(r.totalExtrinsic)}</td>
-                </tr>
-                {/* Puts subtotal sits with the puts rather than in the footer;
-                    the calls subtotal already falls directly under the calls. */}
-                {i === lastPutIndex && (
-                  <tr className="table-subtotal">
-                    <td colSpan={6} className={signClass(putsTotal)}>Puts total extrinsic</td>
-                    <td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td>
-                  </tr>
-                )}
-              </Fragment>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr><td colSpan={6} className={signClass(callsTotal)}>Calls total extrinsic</td><td className={signClass(callsTotal)}>{fmtMoney(callsTotal)}</td></tr>
-            <tr><td colSpan={6} className={signClass(grandTotal)}>Total extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
-          </tfoot>
-        </table>
+          </Tile>
+          <Tile label="Net position at spot" tone={signClass(netAtSpot)}>
+            {fmtMoney(netAtSpot)}
+          </Tile>
+          {/* A line that runs off forever past the top strike has no maximum,
+              and a position that can't win (or can't lose) has none to show
+              either. */}
+          <Tile label="Max profit" tone={signClass(Math.max(maxProfit, 0))}>
+            {maxProfit === Infinity ? "Unlimited" : maxProfit > 0 ? fmtMoney(maxProfit) : "None"}
+          </Tile>
+          <Tile label="Max loss" tone={signClass(Math.min(maxLoss, 0))}>
+            {maxLoss === -Infinity ? "Unlimited" : maxLoss < 0 ? fmtMoney(maxLoss) : "None"}
+          </Tile>
+          <Tile label="Break-even">
+            {breakEvens.length ? breakEvens.map((b) => fmtLevel(b, ticker)).join(" · ") : "None"}
+          </Tile>
+          {/* The three extrinsic totals differ only in label and value. */}
+          {[
+            ["Total extrinsic", grandTotal],
+            ["Puts total extrinsic", putsTotal],
+            ["Calls total extrinsic", callsTotal],
+          ].map(([label, total]) => (
+            <Tile key={label} label={label} labelTone={signClass(total)} tone={signClass(total)}>
+              {fmtMoney(total)}
+            </Tile>
+          ))}
         </div>
-      </Blueprint>
+        <LegTable view={view} {...tableProps} />
+      </div>
     </section>
+  );
+}
+
+// One tab per symbol, so a screenshot holding several still fits one screen.
+// Arrow keys, Home and End move along the row — the keyboard contract a tab
+// list owes — and only the selected tab sits in the Tab order.
+function SymbolTabs({ tickers, active, onSelect }) {
+  const tabRefs = useRef([]);
+  const onKeyDown = (e, i) => {
+    const moves = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tickers.length - 1 };
+    if (!(e.key in moves)) return;
+    e.preventDefault();
+    const next = (moves[e.key] + tickers.length) % tickers.length;
+    onSelect(tickers[next]);
+    tabRefs.current[next]?.focus();
+  };
+
+  return (
+    <div className="tabs" role="tablist" aria-label="Symbols">
+      {tickers.map((t, i) => (
+        <button
+          key={t}
+          ref={(el) => { tabRefs.current[i] = el; }}
+          id={`tab-${t}`}
+          className="tab"
+          type="button"
+          role="tab"
+          aria-selected={t === active}
+          aria-controls="symbol-panel"
+          tabIndex={t === active ? 0 : -1}
+          onClick={() => onSelect(t)}
+          onKeyDown={(e) => onKeyDown(e, i)}
+        >
+          {t}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -1446,6 +1437,8 @@ export default function OptionsPositionAnalyzer() {
   const [dragOver, setDragOver] = useState(false);
   // One sort for every section's table, like the shared column widths.
   const [sort, setSort] = useState(null);
+  // The symbol tab picked; until one is, the first symbol shows.
+  const [activeTicker, setActiveTicker] = useState(null);
   const inputRef = useRef(null);
   const { widths: columnWidths, startResize, activeIndex: activeColumn } = useColumnWidths();
 
@@ -1557,9 +1550,12 @@ export default function OptionsPositionAnalyzer() {
 
   const symbolViews = buildSymbolViews(rawRows, manualSpots);
   const readyViews = symbolViews.filter((v) => v.ready);
+  // The symbol on screen: the tab picked, or the first when that one is gone.
+  const activeView = readyViews.find((v) => v.ticker === activeTicker) ?? readyViews[0];
 
   const hasData = rawRows.length > 0;
   const showResults = readyViews.length > 0;
+  const tabbed = readyViews.length > 1;
 
   // Symbols missing only a spot get an input; anything else gets named. With
   // one symbol that's the whole story; with several it flags the odd one out
@@ -1568,37 +1564,11 @@ export default function OptionsPositionAnalyzer() {
   const skipped = symbolViews.filter((v) => v.issue).map((v) => v.issue);
   const loadIssue = !hasData || skipped.length === 0 ? null : `Read the screenshot. ${skipped.join(" ")}`;
 
-  return (
+  // One look for every failure (spec §06 States): a framed line, not red —
+  // red is for losses — plus Retry when there is a read to redo. A symbol
+  // still waiting on its spot asks for it underneath.
+  const notices = (
     <>
-      <TopBar extractedAt={hasData ? extractedAt : null} />
-      <div className="content">
-      <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={onSelect} />
-
-      {/* Once results are on screen the chart panels become the drop targets,
-          so the standalone dropzone is only needed when there's nothing to
-          show — including the case where rows loaded but weren't usable. */}
-      {!showResults && (
-        <div
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          onClick={() => inputRef.current.click()}
-          className={`dropzone ${dragOver ? "is-dragover" : ""}`}
-        >
-          {loading ? (
-            <span className="micro">Reading screenshot…</span>
-          ) : (
-            <div>
-              <Upload size={22} className="dropzone__icon" />
-              <p className="dropzone__title">Drop, paste (Ctrl/Cmd+V), or click to add an IBKR position screenshot</p>
-              <p className="dropzone__subtitle">Include the column headers for best accuracy</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* One look for every failure (spec §06 States): a framed line, not red
-          — red is for losses — plus Retry when there is a read to redo. */}
       {error ? (
         <div className="blueprint state">
           <span className="micro">{error}</span>
@@ -1618,35 +1588,68 @@ export default function OptionsPositionAnalyzer() {
 
       {!error &&
         awaitingSpot.map((v) => <SpotPrompt key={v.ticker} ticker={v.ticker} onSubmit={setSpot} />)}
+    </>
+  );
 
-      {showResults && (
-        <>
-          {/* One action for the page rather than one per symbol — with several
-              sections a button in each chart panel just repeats itself. */}
+  return (
+    <>
+      <TopBar extractedAt={hasData ? extractedAt : null} />
+      <div className="content">
+      <input ref={inputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={onSelect} />
+
+      {/* Results fill exactly one screen. Whatever has to show with them — a
+          notice, the symbol tabs, "Reading…" — takes its row out of the chart
+          and table rather than pushing them past the bottom edge. With nothing
+          to show, including rows that loaded but weren't usable, the
+          standalone dropzone takes the screen instead. */}
+      {showResults ? (
+        <div className="screen-wrap">
+          {notices}
           {/* No toolbar in the resting state — screenshots come in by drop or
-              paste. The row only appears while a drop is being read, so there's
-              still feedback during the wait without costing a row otherwise. */}
-          {loading && (
-            <div className="panel-head">
-              <span className="micro">Reading…</span>
+              paste. The row is there for the symbol tabs, and while a drop is
+              being read, so there's still feedback during the wait. */}
+          {(tabbed || loading) && (
+            <div className="screen-bar">
+              {tabbed && (
+                <SymbolTabs
+                  tickers={readyViews.map((v) => v.ticker)}
+                  active={activeView.ticker}
+                  onSelect={setActiveTicker}
+                />
+              )}
+              {loading && <span className="micro screen-bar__status">Reading…</span>}
             </div>
           )}
-
-          {readyViews.map((view) => (
-            <PositionSection
-              key={view.ticker}
-              view={view}
-              columnWidths={columnWidths}
-              startResize={startResize}
-              activeColumn={activeColumn}
-              sort={sort}
-              onSort={toggleSort}
-              dragOver={dragOver}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={onDrop}
-            />
-          ))}
+          <PositionScreen
+            view={activeView}
+            {...(tabbed && { id: "symbol-panel", role: "tabpanel", "aria-labelledby": `tab-${activeView.ticker}` })}
+            tableProps={{ columnWidths, startResize, activeColumn, sort, onSort: toggleSort }}
+            dragOver={dragOver}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+          />
+        </div>
+      ) : (
+        <>
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            onClick={() => inputRef.current.click()}
+            className={`dropzone ${dragOver ? "is-dragover" : ""}`}
+          >
+            {loading ? (
+              <span className="micro">Reading screenshot…</span>
+            ) : (
+              <div>
+                <Upload size={22} className="dropzone__icon" />
+                <p className="dropzone__title">Drop, paste (Ctrl/Cmd+V), or click to add an IBKR position screenshot</p>
+                <p className="dropzone__subtitle">Include the column headers for best accuracy</p>
+              </div>
+            )}
+          </div>
+          {notices}
         </>
       )}
       </div>
