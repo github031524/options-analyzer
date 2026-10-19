@@ -422,3 +422,31 @@ brute-force calculation on every single-expiry fixture, e.g.:
 | ES iron condor | `1,400` | `−3,600` | `6,572 · 7,028` |
 | CL long straddle | `Unlimited` | `−24,500` | `65.1 · 74.9` |
 | ZB short puts | `25,000` | `−42,625,000` | `108'08` |
+
+---
+
+## Follow-up — one-screen layout
+
+A position now fits one screen with no page scroll: one chart panel in the
+left two-thirds, every figure and the leg table in the right third.
+
+| Element | Behaviour |
+|---|---|
+| Chart | P&L pane on top (60%), net-position pane underneath, one price axis: strike lines, the Δ0 marker and the hover line run through both; strike labels drawn once, at the bottom |
+| Hover | one readout: price, net position, P&L at expiry, P&L today |
+| Sizing | drawn at its panel's measured pixel size (`ResizeObserver`), so labels stay 10.5px at any width; fills the screen height |
+| Right third | eight tiles in two columns — spot, net position at spot, max profit, max loss, break-even, total / puts / calls extrinsic — then the leg table, which scrolls inside its frame when long |
+| Table | compact default widths (442px in all), saved under a new key `options-analyzer:column-widths-v2` so widths from the old full-width table don't overflow it; header labels a step smaller and wrapping |
+| Several symbols | one tab per symbol (arrow keys, Home, End), one symbol on screen at a time |
+| Notices | an error, a missing-spot prompt and "Reading…" take their row inside the screen rather than pushing it past the bottom |
+| ≤ 900px wide | chart stacks over the figures, the page scrolls, chart 520px tall |
+| Break-even labels | page-coloured outline, so the dashed line can't strike through them |
+
+Verified against the previous build over the same 14 fixtures: every tile
+figure, P&L figure, table cell and chart label is **identical** (strike labels
+now appear once instead of twice); no page scroll at 1440×800 or 1920×960,
+including an 18-leg table, which scrolls in its own box; no console errors; no
+NaN. Checked in a real browser: tabs and their keyboard keys, the hover readout
+(against an independent iron-condor calculation), "Reading…" and a failed
+re-read with results up, a missing-spot prompt, column resize under the new
+key, sorting, and the stacked 820px layout.
