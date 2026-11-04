@@ -3,6 +3,7 @@ import compression from "compression";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { EXTRACT_MODEL } from "../shared/model.js";
 import { requireAuth } from "./auth.js";
 import { normalizeRow } from "./prices.js";
 
@@ -88,7 +89,7 @@ app.post("/api/extract", async (req, res) => {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: EXTRACT_MODEL, // shared/model.js — the top bar shows the same value
         // A row costs roughly 40 tokens, so 1000 only covered ~25 rows and a
         // longer position list would silently truncate into invalid JSON.
         max_tokens: 4000,
