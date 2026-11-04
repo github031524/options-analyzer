@@ -163,12 +163,13 @@
 }
 
 
-/* ---- Top bar — data age readout ----------------------------------------- */
+/* ---- Top bar — data age and AI model readouts --------------------------- */
 
-/* Age of the position on screen. Sits in the bar's spare right-hand side, so
-   it costs the content area no height. */
-.topbar__age {
-  margin-left: auto;
+/* Age of the position on screen, and the AI model that reads screenshots.
+   Both sit in the bar's spare right-hand side (.topbar__actions), so they
+   cost the content area no height. */
+.topbar__age,
+.topbar__model {
   font-family: var(--font-heading);
   font-weight: 600;
   font-size: var(--size-micro);
@@ -176,6 +177,35 @@
   letter-spacing: var(--track-label);
   color: var(--color-accent-800);
   white-space: nowrap;
+}
+
+/* A hairline between the two when both show. */
+.topbar__age + .topbar__model {
+  padding-left: var(--space-4);
+  border-left: var(--hairline);
+}
+
+/* Side by side, the pair stops clearing the centred switcher below ~900px, so
+   it stacks into two short lines there. */
+@media (max-width: 900px) {
+  .topbar__actions {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0;
+  }
+
+  .topbar__age + .topbar__model {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+/* Phones — the platform's 640px breakpoint, where the switcher drops into the
+   bar's flow. No room is left beside it, so the model label goes and the age
+   stays; with no age either, the empty slot goes too so it takes no gap. */
+@media (max-width: 640px) {
+  .topbar__model { display: none; }
+  .topbar__actions:not(:has(.topbar__age)) { display: none; }
 }
 
 

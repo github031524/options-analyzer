@@ -450,3 +450,24 @@ NaN. Checked in a real browser: tabs and their keyboard keys, the hover readout
 (against an independent iron-condor calculation), "Reading…" and a failed
 re-read with results up, a missing-spot prompt, column resize under the new
 key, sorting, and the stacked 820px layout.
+
+---
+
+## Follow-up — AI model in the top bar
+
+The top bar now names the AI model that reads screenshots. The id lives once,
+in `shared/model.js`: the server sends it to Anthropic and the client bundles
+the same constant at build time, so the label can't drift from the model
+actually called, and showing it costs no request.
+
+| Width | Shown |
+|---|---|
+| over 900px | `AI model: Claude Sonnet 4.6` at the right; with a position up, `Read 3m ago` sits before it behind a hairline |
+| 641–900px | age and model stack into two short lines |
+| 640px and under | model hidden — no room beside the switcher; the bar is as before |
+
+Hovering gives the exact id (`Screenshots are read by claude-sonnet-4-6`).
+Checked in a real browser at 16 widths from 360 to 1920px, empty and with a
+position up: no overflow, the bar stays 48px, the label clears the centred
+switcher by at least 33px, and at 640px and under every measurement matches
+the previous build.

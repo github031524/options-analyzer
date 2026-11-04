@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, Fragment } from "react";
 import { Upload } from "lucide-react";
+import { EXTRACT_MODEL, modelName } from "../shared/model.js";
 
 const ACCENT = "#5980a6";
 const ACCENT_TINT = "#dbe4ee";
@@ -1151,7 +1152,14 @@ function TopBar({ extractedAt }) {
           )}
         </nav>
       </div>
-      <DataAge at={extractedAt} />
+      {/* The spec's right-hand slot (no account chip in this app). The model
+          label reads the same constant the server sends to Anthropic. */}
+      <div className="topbar__actions">
+        <DataAge at={extractedAt} />
+        <span className="topbar__model" title={`Screenshots are read by ${EXTRACT_MODEL}`}>
+          AI model: {modelName(EXTRACT_MODEL)}
+        </span>
+      </div>
     </header>
   );
 }
