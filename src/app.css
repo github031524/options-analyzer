@@ -83,7 +83,7 @@
 }
 
 /* Two equal columns in the right third, padded tighter than the platform
-   tile so all eight figures leave the leg table room on one screen. */
+   tile so all six figures leave the leg table room on one screen. */
 .kpi-grid {
   flex: none;
   display: grid;

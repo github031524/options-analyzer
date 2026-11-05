@@ -458,10 +458,9 @@ function buildPnl(legs, baselineShift, spot, dollarMultiplier, sharesPerContract
     ]),
   ].sort((a, b) => a - b);
 
-  // The summary figures cover every price, not just the plotted range. Far
-  // above the top strike every call moves one-for-one with the underlying and
-  // every put is worthless, so the line ends at this slope: falling is an
-  // unlimited loss, rising an unlimited profit.
+  // Break-evens cover every price, not just the plotted range. Far above the
+  // top strike every call moves one-for-one with the underlying and every put
+  // is worthless, so the line ends at this slope.
   const slopeAbove =
     baselineShift * underlyingPerPoint +
     legs.reduce((s, l) => s + (l.type === "CALL" ? l.position * dollarMultiplier : 0), 0);
@@ -487,14 +486,11 @@ function buildPnl(legs, baselineShift, spot, dollarMultiplier, sharesPerContract
   }
   const last = scan[scan.length - 1];
   if (slopeAbove !== 0 && last.y >= 0 !== slopeAbove > 0) breakEvens.push(last.x - last.y / slopeAbove);
-  const ys = scan.map((p) => p.y);
 
   return {
     expiryPts: xs.map((x) => ({ x, y: atExpiry(x) })),
     todayPts: today ? xs.map((x) => ({ x, y: today(x) })) : null,
     breakEvens,
-    maxProfit: slopeAbove > 0 ? Infinity : Math.max(...ys),
-    maxLoss: slopeAbove < 0 ? -Infinity : Math.min(...ys),
     atSpot: atExpiry(spot),
     firstExpiry,
     mixedExpiries: new Set(dated).size > 1,
@@ -1322,7 +1318,7 @@ function LegTable({ view, columnWidths, startResize, activeColumn, sort, onSort 
 // drop target, so a new screenshot can go straight onto it.
 function PositionScreen({ view, tableProps, dragOver, onDragOver, onDragLeave, onDrop, ...rest }) {
   const { ticker, spotPrice, spotIsTyped, putsTotal, callsTotal, grandTotal, pnl, netAtSpot } = view;
-  const { maxProfit, maxLoss, breakEvens } = pnl;
+  const { breakEvens } = pnl;
 
   return (
     <section className="screen" {...rest}>
@@ -1358,15 +1354,6 @@ function PositionScreen({ view, tableProps, dragOver, onDragOver, onDragLeave, o
           </Tile>
           <Tile label="Net position at spot" tone={signClass(netAtSpot)}>
             {fmtMoney(netAtSpot)}
-          </Tile>
-          {/* A line that runs off forever past the top strike has no maximum,
-              and a position that can't win (or can't lose) has none to show
-              either. */}
-          <Tile label="Max profit" tone={signClass(Math.max(maxProfit, 0))}>
-            {maxProfit === Infinity ? "Unlimited" : maxProfit > 0 ? fmtMoney(maxProfit) : "None"}
-          </Tile>
-          <Tile label="Max loss" tone={signClass(Math.min(maxLoss, 0))}>
-            {maxLoss === -Infinity ? "Unlimited" : maxLoss < 0 ? fmtMoney(maxLoss) : "None"}
           </Tile>
           <Tile label="Break-even">
             {breakEvens.length ? breakEvens.map((b) => fmtLevel(b, ticker)).join(" · ") : "None"}
