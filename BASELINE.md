@@ -471,3 +471,15 @@ Checked in a real browser at 16 widths from 360 to 1920px, empty and with a
 position up: no overflow, the bar stays 48px, the label clears the centred
 switcher by at least 33px, and at 640px and under every measurement matches
 the previous build.
+
+---
+
+## Follow-up — max profit and max loss tiles removed
+
+The right third now has six tiles: spot, net position at spot, break-even,
+and total / puts / calls extrinsic. Max profit and max loss are gone from
+the screen, and their calculation went with them; break-evens still cover
+every price, not just the plotted range.
+
+Checked in a real browser: six tiles, the remaining figures unchanged, no
+page scroll at 1440×800, no console errors.
