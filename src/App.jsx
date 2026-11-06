@@ -234,7 +234,7 @@ function buildSymbolViews(rawRows, manualSpots = {}) {
       spotPrice == null
         ? []
         : rows
-            .map((r) => {
+            .map((r, i) => {
               const leg = parseLeg(r.description);
               if (!leg) return null;
               const position = Number(r.position);
@@ -245,6 +245,10 @@ function buildSymbolViews(rawRows, manualSpots = {}) {
               const extrinsic = last - intrinsic;
               return {
                 ...leg,
+                // The table's row key. Strike + type + quantity repeats across
+                // expiries (a 7410 call short 50 in three weeklies), and React
+                // left rows behind on the next read when keys collided.
+                id: i,
                 position,
                 last,
                 intrinsic,
@@ -1282,7 +1286,7 @@ function LegTable({ view, columnWidths, startResize, activeColumn, sort, onSort 
         </thead>
         <tbody>
           {sortedRows.map((r, i) => (
-            <Fragment key={`${r.type}-${r.strike}-${r.position}`}>
+            <Fragment key={r.id}>
               <tr className={r.type === "PUT" ? "row-put" : "row-call"}>
                 <td>{r.strike}</td>
                 <td className="text">{r.type}</td>

@@ -483,3 +483,18 @@ every price, not just the plotted range.
 
 Checked in a real browser: six tiles, the remaining figures unchanged, no
 page scroll at 1440×800, no console errors.
+
+---
+
+## Follow-up — leftover rows in the leg table
+
+After a new read, the leg table could keep rows from the previous position:
+18 rows on screen for an 8-leg screenshot. Its row keys were strike + type +
+quantity, which repeat across expiries (a 7410 call short 50 in three
+weeklies), and React left the colliding rows behind. Figures and charts were
+never affected — they don't come from the table. Each leg now carries a
+unique row id as its key.
+
+Reproduced in a real browser with the reader stubbed: a 15-leg, three-expiry
+position, then an 8-leg read — 18 rows before the fix, 8 after. Sorting still
+reorders every row; no console errors.
