@@ -276,10 +276,12 @@ function buildSymbolViews(rawRows, manualSpots = {}) {
     const putsTotal = legRows.filter((r) => r.type === "PUT").reduce((s, r) => s + r.totalExtrinsic, 0);
     const callsTotal = legRows.filter((r) => r.type === "CALL").reduce((s, r) => s + r.totalExtrinsic, 0);
     const ready = spotPrice != null && legRows.length > 0;
-    // Computed before the curve so the chart's domain can stretch to keep the
-    // Δ0 marker on screen when it falls past the strike range.
+    // Both computed before the curve so the chart's domain can stretch to keep
+    // the Δ0 marker and the break-evens on screen when they fall past the
+    // strike range.
     const neutralPrice = ready ? deltaNeutralPrice(legRows, baselineShift, sharesPerContract, spotPrice) : null;
-    const curve = ready ? buildCurve(legRows, baselineShift, sharesPerContract, neutralPrice) : null;
+    const pnl = ready ? buildPnl(legRows, baselineShift, spotPrice, dollarMultiplier, sharesPerContract) : null;
+    const curve = ready ? buildCurve(legRows, baselineShift, sharesPerContract, neutralPrice, pnl.breakEvens) : null;
 
     return {
       ticker,
@@ -291,9 +293,7 @@ function buildSymbolViews(rawRows, manualSpots = {}) {
       curve,
       // Drawn over the step chart's price range, so the two charts' strikes
       // line up one above the other.
-      pnl: ready
-        ? buildPnl(legRows, baselineShift, spotPrice, dollarMultiplier, sharesPerContract, curve.domainMin, curve.domainMax)
-        : null,
+      pnl: ready ? { ...pnl, ...pnlPoints(pnl, curve) } : null,
       netAtSpot: ready ? netPositionAt(legRows, baselineShift, spotPrice, sharesPerContract) : null,
       neutralPrice,
       ready,
@@ -390,7 +390,7 @@ function netPositionAt(legs, baselineShift, price, sharesPerContract) {
   return v;
 }
 
-function buildCurve(legs, baselineShift, sharesPerContract, include = null) {
+function buildCurve(legs, baselineShift, sharesPerContract, include = null, breakEvens = []) {
   if (legs.length === 0) return null;
   const strikes = [...new Set(legs.map((l) => l.strike))].sort((a, b) => a - b);
   const minK = strikes[0];
@@ -404,6 +404,15 @@ function buildCurve(legs, baselineShift, sharesPerContract, include = null) {
   if (include != null) {
     domainMin = Math.min(domainMin, include - pad * 0.5);
     domainMax = Math.max(domainMax, include + pad * 0.5);
+  }
+  // Break-evens stretch it too, so both ends show — but at most one strike
+  // spread past each outer strike, which keeps the strikes on at least a
+  // third of the width. A break-even further out than that would crush them
+  // into a sliver; the chart stops at the limit and points to it instead.
+  const reachOut = strikes.length > 1 ? maxK - minK : 2 * pad;
+  for (const b of breakEvens) {
+    domainMin = Math.min(domainMin, Math.max(b - pad * 0.5, minK - reachOut));
+    domainMax = Math.max(domainMax, Math.min(b + pad * 0.5, maxK + reachOut));
   }
   const xs = [domainMin, ...strikes, domainMax];
 
@@ -424,7 +433,7 @@ function buildCurve(legs, baselineShift, sharesPerContract, include = null) {
 // are worth their intrinsic, and a later-dated leg keeps the time it still has
 // left. "Today" re-prices every leg now. Both run Black-76 at the vol backed
 // out of each leg's own quote, the same snapshot the Δ0 estimate uses.
-function buildPnl(legs, baselineShift, spot, dollarMultiplier, sharesPerContract, domainMin, domainMax) {
+function buildPnl(legs, baselineShift, spot, dollarMultiplier, sharesPerContract) {
   const now = Date.now();
   const dated = legs.map((l) => l.expiry).filter((e) => e != null);
   const firstExpiry = dated.length ? Math.min(...dated) : null;
@@ -450,17 +459,6 @@ function buildPnl(legs, baselineShift, spot, dollarMultiplier, sharesPerContract
     horizon > now && priced.some((l) => l.T > 0 && l.iv != null) ? (price) => pnlWith(price, (l) => l.T) : null;
 
   const strikes = [...new Set(legs.map((l) => l.strike))].sort((a, b) => a - b);
-  // Even steps plus every strike in view: a single-expiry line is straight
-  // between strikes, so landing on each kink draws it exactly. Prices stop at
-  // zero even where the chart's range runs below it.
-  const lo = Math.max(domainMin, 0);
-  const STEPS = 300;
-  const xs = [
-    ...new Set([
-      ...Array.from({ length: STEPS + 1 }, (_, i) => lo + ((domainMax - lo) * i) / STEPS),
-      ...strikes.filter((k) => k > lo && k < domainMax),
-    ]),
-  ].sort((a, b) => a - b);
 
   // Break-evens cover every price, not just the plotted range. Far above the
   // top strike every call moves one-for-one with the underlying and every put
@@ -492,14 +490,32 @@ function buildPnl(legs, baselineShift, spot, dollarMultiplier, sharesPerContract
   if (slopeAbove !== 0 && last.y >= 0 !== slopeAbove > 0) breakEvens.push(last.x - last.y / slopeAbove);
 
   return {
-    expiryPts: xs.map((x) => ({ x, y: atExpiry(x) })),
-    todayPts: today ? xs.map((x) => ({ x, y: today(x) })) : null,
     breakEvens,
     atSpot: atExpiry(spot),
     firstExpiry,
     mixedExpiries: new Set(dated).size > 1,
     atExpiry,
     today,
+  };
+}
+
+// The two P&L lines as points across the chart's price range — worked out
+// after the range, which the break-evens above help set. Even steps plus every
+// strike in view: a single-expiry line is straight between strikes, so landing
+// on each kink draws it exactly. Prices stop at zero even where the range runs
+// below it.
+function pnlPoints({ atExpiry, today }, { domainMin, domainMax, strikes }) {
+  const lo = Math.max(domainMin, 0);
+  const STEPS = 300;
+  const xs = [
+    ...new Set([
+      ...Array.from({ length: STEPS + 1 }, (_, i) => lo + ((domainMax - lo) * i) / STEPS),
+      ...strikes.filter((k) => k > lo && k < domainMax),
+    ]),
+  ].sort((a, b) => a - b);
+  return {
+    expiryPts: xs.map((x) => ({ x, y: atExpiry(x) })),
+    todayPts: today ? xs.map((x) => ({ x, y: today(x) })) : null,
   };
 }
 
@@ -847,6 +863,20 @@ function PositionChart({ view, width: W, height: H }) {
             </g>
           );
         })}
+      {/* A break-even too far out for the range to reach is pointed to from
+          the edge it lies past, so it's never silently missing. */}
+      {[
+        [breakEvens.filter((b) => b < domainMin), mL + 4, "start"],
+        [breakEvens.filter((b) => b > domainMax), W - mR - 4, "end"],
+      ].map(([off, x, anchor]) => {
+        if (off.length === 0) return null;
+        const levels = `Break-even${off.length > 1 ? "s" : ""} ${off.map((b) => fmtLevel(b, ticker)).join(" · ")}`;
+        return (
+          <ChartText key={anchor} x={x} y={pnlZero - 8} anchor={anchor} className="chart-halo" pointerEvents="none">
+            {anchor === "start" ? `← ${levels}` : `${levels} →`}
+          </ChartText>
+        );
+      })}
 
       <ChartText x={mL} y={netTop - 14} anchor="start" className="chart-pane-label">
         Net position at expiry
@@ -1300,7 +1330,7 @@ function LegTable({ view, columnWidths, startResize, activeColumn, sort, onSort 
                   the calls subtotal already falls directly under the calls. */}
               {i === lastPutIndex && (
                 <tr className="table-subtotal">
-                  <td colSpan={6} className={signClass(putsTotal)}>Puts total extrinsic</td>
+                  <td colSpan={6} className={signClass(putsTotal)}>{ticker} puts extrinsic</td>
                   <td className={signClass(putsTotal)}>{fmtMoney(putsTotal)}</td>
                 </tr>
               )}
@@ -1308,8 +1338,8 @@ function LegTable({ view, columnWidths, startResize, activeColumn, sort, onSort 
           ))}
         </tbody>
         <tfoot>
-          <tr><td colSpan={6} className={signClass(callsTotal)}>Calls total extrinsic</td><td className={signClass(callsTotal)}>{fmtMoney(callsTotal)}</td></tr>
-          <tr><td colSpan={6} className={signClass(grandTotal)}>Total extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
+          <tr><td colSpan={6} className={signClass(callsTotal)}>{ticker} calls extrinsic</td><td className={signClass(callsTotal)}>{fmtMoney(callsTotal)}</td></tr>
+          <tr><td colSpan={6} className={signClass(grandTotal)}>{ticker} extrinsic</td><td className={signClass(grandTotal)}>{fmtMoney(grandTotal)}</td></tr>
         </tfoot>
       </table>
       </div>
@@ -1320,9 +1350,8 @@ function LegTable({ view, columnWidths, startResize, activeColumn, sort, onSort 
 // One symbol on one screen: the chart fills the left two-thirds; every figure
 // and the leg table sit in the right third. The chart panel doubles as the
 // drop target, so a new screenshot can go straight onto it.
-function PositionScreen({ view, tableProps, dragOver, onDragOver, onDragLeave, onDrop, ...rest }) {
+function PositionScreen({ view, allExtrinsic, tableProps, dragOver, onDragOver, onDragLeave, onDrop, ...rest }) {
   const { ticker, spotPrice, spotIsTyped, putsTotal, callsTotal, grandTotal, pnl, netAtSpot } = view;
-  const { breakEvens } = pnl;
 
   return (
     <section className="screen" {...rest}>
@@ -1359,19 +1388,31 @@ function PositionScreen({ view, tableProps, dragOver, onDragOver, onDragLeave, o
           <Tile label="Net position at spot" tone={signClass(netAtSpot)}>
             {fmtMoney(netAtSpot)}
           </Tile>
-          <Tile label="Break-even">
-            {breakEvens.length ? breakEvens.map((b) => fmtLevel(b, ticker)).join(" · ") : "None"}
-          </Tile>
-          {/* The three extrinsic totals differ only in label and value. */}
+          {/* This symbol's three extrinsic totals differ only in label and
+              value. Puts and calls side by side, their sum under them. */}
           {[
-            ["Total extrinsic", grandTotal],
-            ["Puts total extrinsic", putsTotal],
-            ["Calls total extrinsic", callsTotal],
+            [`${ticker} puts extrinsic`, putsTotal],
+            [`${ticker} calls extrinsic`, callsTotal],
+            [`${ticker} extrinsic`, grandTotal],
           ].map(([label, total]) => (
             <Tile key={label} label={label} labelTone={signClass(total)} tone={signClass(total)}>
               {fmtMoney(total)}
             </Tile>
           ))}
+          {/* Every symbol read, added up — the same on every tab. A symbol
+              still waiting for a typed spot has no extrinsic yet, so it's
+              named rather than silently left out. */}
+          <Tile
+            label="Total extrinsic"
+            labelTone={signClass(allExtrinsic.total)}
+            tone={signClass(allExtrinsic.total)}
+            title="Every symbol read, added up"
+          >
+            {fmtMoney(allExtrinsic.total)}
+            {allExtrinsic.excluded.length > 0 && (
+              <span className="kpi__figure-note"> excludes {allExtrinsic.excluded.join(", ")}</span>
+            )}
+          </Tile>
         </div>
         <LegTable view={view} {...tableProps} />
       </div>
@@ -1560,6 +1601,11 @@ export default function OptionsPositionAnalyzer() {
   // one symbol that's the whole story; with several it flags the odd one out
   // while the rest still render.
   const awaitingSpot = symbolViews.filter((v) => v.needsSpot);
+  // Extrinsic is in dollars for every symbol, so ES and NQ add up directly.
+  const allExtrinsic = {
+    total: readyViews.reduce((sum, v) => sum + v.grandTotal, 0),
+    excluded: awaitingSpot.map((v) => v.ticker),
+  };
   const skipped = symbolViews.filter((v) => v.issue).map((v) => v.issue);
   const loadIssue = !hasData || skipped.length === 0 ? null : `Read the screenshot. ${skipped.join(" ")}`;
 
@@ -1621,6 +1667,7 @@ export default function OptionsPositionAnalyzer() {
           )}
           <PositionScreen
             view={activeView}
+            allExtrinsic={allExtrinsic}
             {...(tabbed && { id: "symbol-panel", role: "tabpanel", "aria-labelledby": `tab-${activeView.ticker}` })}
             tableProps={{ columnWidths, startResize, activeColumn, sort, onSort: toggleSort }}
             dragOver={dragOver}

@@ -498,3 +498,32 @@ unique row id as its key.
 Reproduced in a real browser with the reader stubbed: a 15-leg, three-expiry
 position, then an 8-leg read — 18 rows before the fix, 8 after. Sorting still
 reorders every row; no console errors.
+
+---
+
+## Follow-up — break-evens on the chart, per-symbol and all-symbol extrinsic
+
+**Chart range.** The price axis now stretches to take in every break-even,
+with half a pad of room, so both ends of a strangle show. It stretches at most
+one strike spread past each outer strike (twice the default pad for a single
+strike), which keeps the strikes on at least a third of the width. A
+break-even past that limit is pointed to from the edge it lies past:
+`Break-even 7,470 →` / `← Break-even 7,380`. Break-evens are now worked out
+before the range (`buildPnl` no longer takes it; `pnlPoints` draws the lines
+across it afterwards).
+
+| Case | Shown |
+|---|---|
+| Short 7400 put / 7470 call for 30 | break-evens 7,370 and 7,500 both on the chart; strikes 50% of width |
+| Long 7400 and 7410 calls | `Break-even 7,453 →` at the right edge |
+| Short 7420 put / 7430 call for 40 | `← Break-even 7,380` and `Break-even 7,470 →`; strikes 33% of width |
+
+**Tiles.** The Break-even tile is gone — the chart carries them. The
+extrinsic tiles name their symbol (`ES puts extrinsic`, `ES calls extrinsic`,
+`ES extrinsic`), and a new `Total extrinsic` tile adds up every symbol read,
+the same on every tab. A symbol waiting for a typed spot isn't in it and is
+named on the tile (`excludes GC`). The leg table's subtotal rows use the same
+per-symbol names.
+
+Checked in a real browser: ES + NQ + GC-awaiting-spot shows ES 10,000, total
+16,000 `excludes GC`; no labels cut off at the chart edges; no console errors.
